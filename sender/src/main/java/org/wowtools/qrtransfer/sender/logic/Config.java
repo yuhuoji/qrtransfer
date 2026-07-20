@@ -1,6 +1,6 @@
 package org.wowtools.qrtransfer.sender.logic;
 
-import org.wowtools.common.utils.PropertiesReader;
+import org.wowtools.qrtransfer.common.util.ConfigProperties;
 import org.wowtools.qrtransfer.sender.StartSender;
 
 import java.io.File;
@@ -32,20 +32,20 @@ public class Config {
     public static final boolean testQr;
 
     static {
-        PropertiesReader p = new PropertiesReader(StartSender.class, "config.properties");
+        ConfigProperties p = new ConfigProperties(StartSender.class, "config.properties");
         int i;
 
-        tar = new File(p.getString("tar"));
+        tar = new File(p.getRequired("tar"));
 
         try {
-            i = p.getInteger("initQrPageSize");
+            i = Integer.parseInt(p.get("initQrPageSize", "1500"));
         } catch (Exception e) {
             i = 1500;
         }
         initQrPageSize = i;
 
         try {
-            i = p.getInteger("qrCodeWidth");
+            i = Integer.parseInt(p.get("qrCodeWidth", "256"));
         } catch (Exception e) {
             i = 256;
         }
@@ -53,8 +53,8 @@ public class Config {
 
         boolean b;
         try {
-            b = p.getString("testQr").equals("true");
-        } finally {
+            b = Boolean.parseBoolean(p.get("testQr", "true"));
+        } catch (Exception e) {
             b = true;
         }
         testQr = b;

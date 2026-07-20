@@ -26,7 +26,7 @@ public class FileHead {
         String res = new String(bts, Constant.charset);
         String[] strs = res.split("\n");
         md5 = strs[0];
-        fileSize = Integer.valueOf(strs[1]);
+        fileSize = Long.parseLong(strs[1]);
     }
 
     public String getMd5() {

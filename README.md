@@ -21,6 +21,26 @@ https://github.com/codingmiao/qrtransfer/releases/download/v1.0/qrtransfer_v1.0.
 
 然后[点击这里](doc/manual.md)按步骤配置和启动
 
+# 剪贴板文本桥接（命令行）
+
+`clipboard-sender` 与 `clipboard-receiver` 是独立的 UTF-8 文本桥接工具，不读取系统剪贴板：请先把需要传输的文本手动粘贴到云桌面文件，再显式指定该文件进行单次传输。现有 `sender`、`receiver` 的配置与用法不受影响。
+
+构建后，在云桌面运行：
+
+```bat
+java -jar clipboard-sender-1.0-SNAPSHOT.jar --input D:\tmp\clipboard.txt
+```
+
+该命令会显示二维码窗口；保持二维码可见，并让窗口中的日志区域获得键盘焦点。
+
+在本机运行：
+
+```bash
+java -jar clipboard-receiver-1.0-SNAPSHOT.jar --output ~/Downloads/clipboard.txt
+```
+
+接收端默认每页等待 500ms，校验通过后才写入输出文件。若目标文件已存在，需显式传入 `--overwrite`；可使用 `--page-delay 800` 增加稳定性。发送端支持 `--qr-size` 与 `--page-size` 调整二维码显示和单页字节数。
+
 # 上游来源与开源许可
 
 本项目基于 wowtools 的 [qrtransfer](https://gitee.com/wowtools/qrtransfer) 开发；原始发布包可见 [codingmiao/qrtransfer v1.0](https://github.com/codingmiao/qrtransfer/releases/tag/v1.0)。

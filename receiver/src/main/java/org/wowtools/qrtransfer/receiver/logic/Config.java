@@ -1,6 +1,6 @@
 package org.wowtools.qrtransfer.receiver.logic;
 
-import org.wowtools.common.utils.PropertiesReader;
+import org.wowtools.qrtransfer.common.util.ConfigProperties;
 import org.wowtools.qrtransfer.receiver.StartReceiver;
 
 import java.io.File;
@@ -21,13 +21,13 @@ public class Config {
     public static final long pageDelay;
 
     static {
-        PropertiesReader p = new PropertiesReader(StartReceiver.class, "config.properties");
+        ConfigProperties p = new ConfigProperties(StartReceiver.class, "config.properties");
 
-        dest = new File(p.getString("dest"));
+        dest = new File(p.getRequired("dest"));
 
         long l;
         try {
-            String str = p.getString("pageDelay");
+            String str = p.get("pageDelay", "0");
             l = Long.parseLong(str);
         } catch (Exception e) {
             l = 0;
