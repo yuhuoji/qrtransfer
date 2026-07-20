@@ -82,6 +82,8 @@ public final class TransferReceiver {
         FileHead header = readHeader(reader, listener);
         byte[] headerBytes = header.toByte();
         Path temp = Files.createTempFile(parent, output.getFileName().toString() + ".", ".part");
+        Thread cleanupHook = new Thread(() -> deleteQuietly(temp), "qrtransfer-temp-cleanup");
+        Runtime.getRuntime().addShutdownHook(cleanupHook);
         long written = 0;
         int previousPage = -1;
         boolean next = true;
@@ -135,21 +137,25 @@ public final class TransferReceiver {
             }
         } catch (InterruptedException | RuntimeException | IOException e) {
             Files.deleteIfExists(temp);
+            removeCleanupHook(cleanupHook);
             throw e;
         }
 
         String targetMd5 = Md5Util.getFileMD5(temp.toFile());
         if (!header.getMd5().equals(targetMd5)) {
             Files.deleteIfExists(temp);
+            removeCleanupHook(cleanupHook);
             return new Result(false, written, header.getMd5(), targetMd5);
         }
         try {
             validator.validate(temp);
         } catch (IOException | RuntimeException e) {
             Files.deleteIfExists(temp);
+            removeCleanupHook(cleanupHook);
             throw e;
         }
         move(temp, output, overwrite);
+        removeCleanupHook(cleanupHook);
         return new Result(true, written, header.getMd5(), targetMd5);
     }
 
@@ -200,6 +206,22 @@ public final class TransferReceiver {
             } else {
                 Files.move(temp, output);
             }
+        }
+    }
+
+    private static void deleteQuietly(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException ignored) {
+            // Best effort during JVM shutdown.
+        }
+    }
+
+    private static void removeCleanupHook(Thread hook) {
+        try {
+            Runtime.getRuntime().removeShutdownHook(hook);
+        } catch (IllegalStateException ignored) {
+            // Shutdown is already in progress and the hook will perform cleanup.
         }
     }
 }

@@ -10,9 +10,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransferFileReaderTest {
     @TempDir
@@ -54,5 +56,25 @@ class TransferFileReaderTest {
         assertEquals(0, page.getPageNum());
         assertEquals(0, page.getBytes().size());
         assertEquals("end", page.getMessage());
+    }
+
+    @Test
+    void doesNotValidateEmptyTerminalPayload() throws Exception {
+        Path input = tempDir.resolve("exact-page.txt");
+        Files.writeString(input, "12345678901234567890123456789012", StandardCharsets.UTF_8);
+        AtomicInteger validationCalls = new AtomicInteger();
+
+        Iterator<QrPageProto.QrPagePb> pages = TransferFileReader.readPages(input.toFile(), 32, bytes -> {
+            assertTrue(bytes.length > 0);
+            validationCalls.incrementAndGet();
+            return true;
+        });
+
+        QrPageProto.QrPagePb dataPage = pages.next();
+        QrPageProto.QrPagePb endPage = pages.next();
+        assertEquals(32, dataPage.getBytes().size());
+        assertEquals(0, endPage.getBytes().size());
+        assertEquals("end", endPage.getMessage());
+        assertEquals(1, validationCalls.get());
     }
 }

@@ -103,6 +103,12 @@ public final class TransferFileReader {
         }
 
         private byte[] readValidated(int pageSize) {
+            // EOF is represented by an empty protobuf page carrying the end flag.
+            // The QR validator checks payload capacity, so validating zero payload
+            // would incorrectly reject this otherwise valid terminal page.
+            if (pageSize == 0) {
+                return new byte[0];
+            }
             int size = pageSize;
             while (true) {
                 byte[] bytes = readFromMemory(size);

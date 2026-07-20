@@ -11,3 +11,4 @@ nb_jr_remoting.cfg
 rebel.xml
 *.log
 .DS_Store
+dependency-reduced-pom.xml
