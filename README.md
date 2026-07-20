@@ -21,6 +21,12 @@ https://github.com/codingmiao/qrtransfer/releases/download/v1.0/qrtransfer_v1.0.
 
 然后[点击这里](doc/manual.md)按步骤配置和启动
 
+# 上游来源与开源许可
+
+本项目基于 wowtools 的 [qrtransfer](https://gitee.com/wowtools/qrtransfer) 开发；原始发布包可见 [codingmiao/qrtransfer v1.0](https://github.com/codingmiao/qrtransfer/releases/tag/v1.0)。
+
+原项目采用 [Apache License 2.0](LICENSE) 开源。本仓库保留原有许可证与声明；后续修改将在提交记录中明确说明。
+
 
 # 声明
 
@@ -42,4 +48,3 @@ https://github.com/codingmiao/qrtransfer/releases/download/v1.0/qrtransfer_v1.0.
 使用本软件时，请严格准守相关法律法规及贵公司各项规定，不要拷被任何涉密文件。
 
 如您擅自违反上述法律法规及规定，造成的任何责任将完全由您自行承担。
-
