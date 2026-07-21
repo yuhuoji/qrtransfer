@@ -25,21 +25,32 @@ https://github.com/yuhuoji/qrtransfer/releases/download/v1.0/qrtransfer_v1.0.zip
 
 `clipboard-sender` 与 `clipboard-receiver` 是独立的 UTF-8 文本桥接工具，不读取系统剪贴板：请先把需要传输的文本手动粘贴到云桌面文件，再显式指定该文件进行单次传输。现有 `sender`、`receiver` 的配置与用法不受影响。
 
-构建后，在云桌面运行：
+请先启动发送端，确认二维码正常显示后，再启动接收端。以下命令均从项目根目录开始执行。
 
-```bat
-java -jar clipboard-sender-1.0-SNAPSHOT.jar --input D:\tmp\clipboard.txt
+Windows 发送端：
+
+```powershell
+cd clipboard-sender\target
+java -jar .\clipboard-sender-1.0-SNAPSHOT.jar --input "<输入文件路径>"
 ```
 
-该命令会显示二维码窗口；保持二维码可见，并让窗口中的日志区域获得键盘焦点。
-
-在本机运行：
+Mac/Linux 接收端：
 
 ```bash
-java -jar clipboard-receiver-1.0-SNAPSHOT.jar --output ~/Downloads/clipboard.txt
+cd clipboard-receiver/target
+java -jar ./clipboard-receiver-1.0-SNAPSHOT.jar \
+  --output "<输出文件路径>" \
+  --page-delay 800
 ```
 
-接收端默认每页等待 500ms，校验通过后才写入输出文件。若目标文件已存在，需显式传入 `--overwrite`；可使用 `--page-delay 800` 增加稳定性。发送端支持 `--qr-size` 与 `--page-size` 调整二维码显示和单页字节数。
+参数说明：
+
+- `--input`：发送端要传输的 UTF-8 文本文件，支持 `.txt`、`.md` 等纯文本格式。
+- `--output`：接收端最终写入的文件路径。
+- `--page-delay`：接收端翻页后的等待时间，单位为毫秒；默认值为 `500`，云桌面推荐使用 `800`，不建议设置为 `0`。
+- `--overwrite`：接收端允许覆盖已存在的输出文件。
+- `--qr-size`：发送端二维码显示尺寸。
+- `--page-size`：发送端每页承载的字节数。
 
 # 上游来源与开源许可
 
