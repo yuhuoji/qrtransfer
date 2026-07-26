@@ -18,6 +18,15 @@ class AdaptiveTuningTest {
     }
 
     @Test
+    void fastProfileCanRecoverBelowFormerMinimum() {
+        AdaptivePageSizer sizer = new AdaptivePageSizer(384, 768, 2100, null);
+        assertTrue(sizer.onFailure());
+        assertEquals(537, sizer.current());
+        assertTrue(sizer.onFailure());
+        assertEquals(384, sizer.current());
+    }
+
+    @Test
     void delayMovesWithinBounds() {
         AdaptiveDelay delay = new AdaptiveDelay(200, 80, 800);
         delay.onSuccess(100);

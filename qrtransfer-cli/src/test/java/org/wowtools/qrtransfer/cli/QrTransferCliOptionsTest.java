@@ -25,6 +25,7 @@ class QrTransferCliOptionsTest {
         });
         assertFalse(options.text);
         assertEquals(700, options.qrSize);
+        assertEquals(384, options.minPageSize);
         assertEquals(2000, options.initialPageSize);
         assertEquals(2100, options.maxPageSize);
     }
