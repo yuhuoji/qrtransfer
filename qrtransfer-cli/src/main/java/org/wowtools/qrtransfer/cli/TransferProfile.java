@@ -1,0 +1,39 @@
+package org.wowtools.qrtransfer.cli;
+
+enum TransferProfile {
+    SAFE("safe", 512, 512, 1200, 2000, 300, 200, 1200, 2500),
+    BALANCED("balanced", 512, 512, 2000, 2800, 200, 80, 800, 1500),
+    FAST("fast", 640, 1024, 2400, 2850, 120, 40, 500, 900);
+
+    final String cliName;
+    final int qrSize;
+    final int minPageSize;
+    final int initialPageSize;
+    final int maxPageSize;
+    final long initialDelay;
+    final long minDelay;
+    final long maxDelay;
+    final long frameTimeout;
+
+    TransferProfile(String cliName, int qrSize, int minPageSize, int initialPageSize, int maxPageSize,
+                    long initialDelay, long minDelay, long maxDelay, long frameTimeout) {
+        this.cliName = cliName;
+        this.qrSize = qrSize;
+        this.minPageSize = minPageSize;
+        this.initialPageSize = initialPageSize;
+        this.maxPageSize = maxPageSize;
+        this.initialDelay = initialDelay;
+        this.minDelay = minDelay;
+        this.maxDelay = maxDelay;
+        this.frameTimeout = frameTimeout;
+    }
+
+    static TransferProfile parse(String value) {
+        for (TransferProfile profile : values()) {
+            if (profile.cliName.equalsIgnoreCase(value)) {
+                return profile;
+            }
+        }
+        throw new IllegalArgumentException("未知 profile: " + value + "，可选 safe|balanced|fast");
+    }
+}
