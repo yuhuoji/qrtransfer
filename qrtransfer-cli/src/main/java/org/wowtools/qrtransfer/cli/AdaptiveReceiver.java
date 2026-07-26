@@ -46,7 +46,6 @@ final class AdaptiveReceiver {
                           long frameTimeout, Listener listener)
             throws IOException, InterruptedException {
         TransferMetrics metrics = new TransferMetrics();
-        metrics.start();
         try {
             return receiveTracked(reader, controller, output, overwrite, requireText,
                     initialDelay, minDelay, maxDelay, frameTimeout, listener, metrics);
@@ -63,6 +62,7 @@ final class AdaptiveReceiver {
             throws IOException, InterruptedException {
         validateOutput(output, overwrite);
         V2Frame header = waitForHeader(reader, listener);
+        metrics.start();
         if (requireText && !header.isText()) {
             listener.log("接收端启用了 --text；完成后将严格验证 UTF-8");
         }
