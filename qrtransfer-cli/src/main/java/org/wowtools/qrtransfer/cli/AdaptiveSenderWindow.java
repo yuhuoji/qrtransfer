@@ -50,6 +50,7 @@ final class AdaptiveSenderWindow extends JFrame {
     private final JTextArea log = new JTextArea();
     private final long sessionId = new SecureRandom().nextLong();
     private final java.awt.KeyEventDispatcher dispatcher = this::dispatchKey;
+    private final TransferMetrics metrics = new TransferMetrics();
 
     private RandomAccessFile input;
     private long fileSize;
@@ -61,6 +62,7 @@ final class AdaptiveSenderWindow extends JFrame {
     private int currentPageNumber;
     private boolean headerVisible;
     private boolean ready;
+    private boolean completed;
 
     AdaptiveSenderWindow(Config config) {
         super("qrtransfer send（adaptive V2）");
@@ -169,6 +171,7 @@ final class AdaptiveSenderWindow extends JFrame {
         if (!headerVisible) {
             return;
         }
+        metrics.start();
         headerVisible = false;
         currentOffset = 0;
         currentPageNumber = 0;
@@ -176,11 +179,16 @@ final class AdaptiveSenderWindow extends JFrame {
     }
 
     private synchronized void acknowledgeCurrent() {
-        if (currentPage == null) {
+        if (currentPage == null || completed) {
             return;
         }
+        metrics.acceptedPage(currentPage.getPayload().length);
         if (currentPage.isEnd()) {
-            append("末页已显示；等待接收端完成 MD5 校验");
+            completed = true;
+            ready = false;
+            metrics.finish();
+            append("接收端已确认文件完整性校验成功");
+            append(metrics.successSummary());
             return;
         }
         currentOffset += currentPage.getPayload().length;
@@ -194,12 +202,14 @@ final class AdaptiveSenderWindow extends JFrame {
             return;
         }
         int old = pageSizer.current();
+        metrics.retry();
         boolean changed = pageSizer.onFailure();
         if (!changed) {
             append("当前页识别失败，但页面大小已到下限/固定值 " + old
                     + "；请增大 --qr-size 或改用 safe profile");
             return;
         }
+        metrics.densityDrop();
         append("接收端请求降密：" + old + " → " + pageSizer.current() + " 字节/页");
         showCurrentPage();
     }
@@ -209,6 +219,8 @@ final class AdaptiveSenderWindow extends JFrame {
             currentPage = null;
             currentOffset = 0;
             currentPageNumber = 0;
+            completed = false;
+            metrics.reset();
             showFrame(header);
             headerVisible = true;
             append("已重置到文件头");
@@ -236,10 +248,12 @@ final class AdaptiveSenderWindow extends JFrame {
                             + size + " 字节" + (end ? "（末页）" : ""));
                     return;
                 }
+                metrics.recognitionFailure();
                 int old = pageSizer.current();
                 if (!pageSizer.onFailure()) {
                     throw new IllegalStateException("页面 " + old + " 字节在当前二维码尺寸下无法识别");
                 }
+                metrics.densityDrop();
                 append("本机校准降密：" + old + " → " + pageSizer.current());
             }
         } catch (Exception e) {
@@ -285,6 +299,7 @@ final class AdaptiveSenderWindow extends JFrame {
     private void fail(Exception e) {
         ready = false;
         append("发送失败：" + e.getMessage());
+        append(metrics.failureSummary(e.getMessage()));
     }
 
     private void append(String message) {

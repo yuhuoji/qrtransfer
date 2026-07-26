@@ -115,6 +115,7 @@ public final class QrTransferCli {
                 System.out::println);
         System.out.println("完成：已写入 " + options.output + "（" + result.bytesWritten
                 + " 字节，MD5 " + result.md5 + "）");
+        System.out.println(result.metrics.successSummary());
     }
 
     private static byte[] capture(Robot robot, boolean binary) {

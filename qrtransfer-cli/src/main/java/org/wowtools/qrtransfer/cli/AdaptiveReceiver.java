@@ -29,10 +29,12 @@ final class AdaptiveReceiver {
     static final class Result {
         final long bytesWritten;
         final String md5;
+        final TransferMetrics metrics;
 
-        Result(long bytesWritten, String md5) {
+        Result(long bytesWritten, String md5, TransferMetrics metrics) {
             this.bytesWritten = bytesWritten;
             this.md5 = md5;
+            this.metrics = metrics;
         }
     }
 
@@ -42,6 +44,22 @@ final class AdaptiveReceiver {
     static Result receive(FrameReader reader, Controller controller, Path output, boolean overwrite,
                           boolean requireText, long initialDelay, long minDelay, long maxDelay,
                           long frameTimeout, Listener listener)
+            throws IOException, InterruptedException {
+        TransferMetrics metrics = new TransferMetrics();
+        metrics.start();
+        try {
+            return receiveTracked(reader, controller, output, overwrite, requireText,
+                    initialDelay, minDelay, maxDelay, frameTimeout, listener, metrics);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            listener.log(metrics.failureSummary(e.getMessage()));
+            throw e;
+        }
+    }
+
+    private static Result receiveTracked(FrameReader reader, Controller controller, Path output,
+                                         boolean overwrite, boolean requireText, long initialDelay,
+                                         long minDelay, long maxDelay, long frameTimeout,
+                                         Listener listener, TransferMetrics metrics)
             throws IOException, InterruptedException {
         validateOutput(output, overwrite);
         V2Frame header = waitForHeader(reader, listener);
@@ -69,9 +87,12 @@ final class AdaptiveReceiver {
                 long elapsed = elapsedMillis(requestStarted);
                 V2Frame frame = decodeOrNull(encoded);
                 if (frame == null) {
+                    metrics.recognitionFailure();
                     if (elapsed >= frameTimeout) {
                         controller.reject(expectedPage);
                         delay.onFailure();
+                        metrics.timeout();
+                        metrics.retry();
                         requestStarted = System.nanoTime();
                         listener.log("页面 " + expectedPage + " 超时，已请求降密重传；等待 "
                                 + delay.current() + "ms");
@@ -98,6 +119,7 @@ final class AdaptiveReceiver {
                 int page = frame.getPageNumber();
                 if (page == expectedPage - 1) {
                     controller.acknowledge(page);
+                    metrics.duplicatePage();
                     requestStarted = System.nanoTime();
                     listener.log("重复页 " + page + "，已重新确认");
                     continue;
@@ -105,6 +127,8 @@ final class AdaptiveReceiver {
                 if (page != expectedPage || frame.getOffset() != expectedOffset) {
                     controller.reject(expectedPage);
                     delay.onFailure();
+                    metrics.sequenceError();
+                    metrics.retry();
                     requestStarted = System.nanoTime();
                     listener.log("页序不一致：期待页 " + expectedPage + "、偏移 " + expectedOffset
                             + "，实际页 " + page + "、偏移 " + frame.getOffset());
@@ -115,6 +139,7 @@ final class AdaptiveReceiver {
                 stream.write(payload);
                 written += payload.length;
                 expectedOffset += payload.length;
+                metrics.acceptedPage(payload.length);
                 listener.log("收到第 " + page + " 页，" + payload.length + " 字节，累计 " + written);
                 delay.onSuccess(elapsed);
                 if (frame.isEnd()) {
@@ -152,7 +177,9 @@ final class AdaptiveReceiver {
         }
         move(temp, output, overwrite);
         removeCleanupHook(cleanupHook);
-        return new Result(written, md5);
+        controller.acknowledge(expectedPage);
+        metrics.finish();
+        return new Result(written, md5, metrics);
     }
 
     private static V2Frame waitForHeader(FrameReader reader, Listener listener)

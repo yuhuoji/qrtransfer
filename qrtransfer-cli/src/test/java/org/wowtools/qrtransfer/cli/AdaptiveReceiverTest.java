@@ -8,9 +8,12 @@ import org.wowtools.qrtransfer.common.util.Md5Util;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -36,10 +39,13 @@ class AdaptiveReceiverTest {
                 Arrays.copyOfRange(expected, 2000, expected.length), true).encode());
 
         Path output = tempDir.resolve("received.zip");
-        AdaptiveReceiver.receive(frames::removeFirst, new NoopController(), output,
+        RecordingController controller = new RecordingController();
+        AdaptiveReceiver.Result result = AdaptiveReceiver.receive(frames::removeFirst, controller, output,
                 false, false, 0, 0, 0, 1000, ignored -> { });
 
         assertArrayEquals(expected, Files.readAllBytes(output));
+        assertEquals(2, result.metrics.pages());
+        assertEquals(List.of(0, 0, 1), controller.acknowledgedPages);
     }
 
     @Test
@@ -60,6 +66,19 @@ class AdaptiveReceiverTest {
     private static final class NoopController implements AdaptiveReceiver.Controller {
         @Override
         public void acknowledge(int pageNumber) {
+        }
+
+        @Override
+        public void reject(int pageNumber) {
+        }
+    }
+
+    private static final class RecordingController implements AdaptiveReceiver.Controller {
+        private final List<Integer> acknowledgedPages = new ArrayList<>();
+
+        @Override
+        public void acknowledge(int pageNumber) {
+            acknowledgedPages.add(pageNumber);
         }
 
         @Override
