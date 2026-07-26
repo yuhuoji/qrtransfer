@@ -21,12 +21,12 @@ class QrTransferCliOptionsTest {
         Files.write(input, new byte[]{0, 1, 2});
         QrTransferCli.SendOptions options = QrTransferCli.SendOptions.parse(new String[]{
                 "send", "--input", input.toString(), "--profile", "fast",
-                "--qr-size", "700", "--initial-page-size", "2200"
+                "--qr-size", "700", "--initial-page-size", "2000"
         });
         assertFalse(options.text);
         assertEquals(700, options.qrSize);
-        assertEquals(2200, options.initialPageSize);
-        assertEquals(2850, options.maxPageSize);
+        assertEquals(2000, options.initialPageSize);
+        assertEquals(2100, options.maxPageSize);
     }
 
     @Test

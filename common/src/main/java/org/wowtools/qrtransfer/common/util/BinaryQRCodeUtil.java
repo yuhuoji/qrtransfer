@@ -13,21 +13,22 @@ import com.google.zxing.qrcode.QRCodeWriter;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 
 import java.awt.image.BufferedImage;
-import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Map;
 
 /**
- * QR codec for V2 frames. ISO-8859-1 maps every Java character to exactly one
- * byte, avoiding the legacy Base64 expansion while keeping ZXing in byte mode.
+ * QR codec for V2 frames. A distinct prefix plus URL-safe Base64 keeps arbitrary
+ * binary payloads stable across ZXing's text-oriented writer and decoder.
  */
 public final class BinaryQRCodeUtil {
+    private static final String PREFIX = "QRT2:";
     private static final Map<EncodeHintType, Object> ENCODE_HINTS = Map.of(
-            EncodeHintType.CHARACTER_SET, StandardCharsets.ISO_8859_1.name(),
+            EncodeHintType.CHARACTER_SET, "UTF-8",
             EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.L,
             EncodeHintType.MARGIN, 2
     );
     private static final Map<DecodeHintType, Object> DECODE_HINTS = Map.of(
-            DecodeHintType.CHARACTER_SET, StandardCharsets.ISO_8859_1.name(),
+            DecodeHintType.CHARACTER_SET, "UTF-8",
             DecodeHintType.TRY_HARDER, false
     );
 
@@ -35,7 +36,7 @@ public final class BinaryQRCodeUtil {
     }
 
     public static void generate(byte[] bytes, BufferedImage image) throws Exception {
-        String content = new String(bytes, StandardCharsets.ISO_8859_1);
+        String content = PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         int width = image.getWidth();
         BitMatrix matrix = new QRCodeWriter().encode(
                 content, BarcodeFormat.QR_CODE, width, width, ENCODE_HINTS);
@@ -51,7 +52,11 @@ public final class BinaryQRCodeUtil {
             BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(
                     new BufferedImageLuminanceSource(image)));
             Result result = new MultiFormatReader().decode(bitmap, DECODE_HINTS);
-            return result.getText().getBytes(StandardCharsets.ISO_8859_1);
+            String text = result.getText();
+            if (!text.startsWith(PREFIX)) {
+                return null;
+            }
+            return Base64.getUrlDecoder().decode(text.substring(PREFIX.length()));
         } catch (Exception e) {
             return null;
         }
