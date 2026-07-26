@@ -21,36 +21,117 @@ https://github.com/yuhuoji/qrtransfer/releases/download/v1.0/qrtransfer_v1.0.zip
 
 然后[点击这里](doc/manual.md)按步骤配置和启动
 
-# 剪贴板文本桥接（命令行）
+# 统一命令行（推荐）
 
-`clipboard-sender` 与 `clipboard-receiver` 是独立的 UTF-8 文本桥接工具，不读取系统剪贴板：请先把需要传输的文本手动粘贴到云桌面文件，再显式指定该文件进行单次传输。现有 `sender`、`receiver` 的配置与用法不受影响。
+`qrtransfer-cli` 是统一的发送/接收程序，默认支持 ZIP、图片、PDF、Markdown、JSON 等任意文件。发送端和接收端都需要 JDK 11；如果其他项目使用 JDK 8，可以仅在启动命令中指定 JDK 11 的 `java` 完整路径，不需要修改系统默认环境。
 
-请先启动发送端，确认二维码正常显示后，再启动接收端。以下命令均从项目根目录开始执行。
-
-Windows 发送端：
-
-```powershell
-cd clipboard-sender\target
-java -jar .\clipboard-sender-1.0-SNAPSHOT.jar --input "<输入文件路径>"
-```
-
-Mac/Linux 接收端：
+构建：
 
 ```bash
-cd clipboard-receiver/target
-java -jar ./clipboard-receiver-1.0-SNAPSHOT.jar \
-  --output "<输出文件路径>" \
-  --page-delay 800
+mvn package
 ```
 
-参数说明：
+构建产物：
 
-- `--input`：发送端要传输的 UTF-8 文本文件，支持 `.txt`、`.md` 等纯文本格式。
-- `--output`：接收端最终写入的文件路径。
-- `--page-delay`：接收端翻页后的等待时间，单位为毫秒；默认值为 `500`，云桌面推荐使用 `800`，不建议设置为 `0`。
-- `--overwrite`：接收端允许覆盖已存在的输出文件。
-- `--qr-size`：发送端二维码显示尺寸。
-- `--page-size`：发送端每页承载的字节数。
+```text
+qrtransfer-cli/target/qrtransfer-cli-1.0-SNAPSHOT.jar
+```
+
+## 启动顺序
+
+1. 云桌面先启动发送端，等待文件头二维码显示。
+2. 本机启动接收端。接收端默认倒计时 5 秒，期间切回云桌面并激活发送端窗口。
+3. 传输期间保持发送端二维码完整可见，不要切换到其他窗口。
+
+Windows/PowerShell 发送任意文件：
+
+```powershell
+cd qrtransfer-cli\target
+java -jar .\qrtransfer-cli-1.0-SNAPSHOT.jar send `
+  --input "<输入文件路径>" `
+  --profile balanced
+```
+
+如果系统默认是 JDK 8，可仅为本程序指定 JDK 11：
+
+```powershell
+& "<JDK11安装目录>\bin\java.exe" -jar .\qrtransfer-cli-1.0-SNAPSHOT.jar send `
+  --input "<输入文件路径>" `
+  --profile balanced
+```
+
+Mac/Linux 接收：
+
+```bash
+cd qrtransfer-cli/target
+java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar receive \
+  --output "<输出文件路径>" \
+  --profile balanced
+```
+
+目标已存在时增加 `--overwrite`。需要严格限制为 UTF-8 文本时，两端都可增加 `--text`；不传 `--text` 即按任意二进制文件处理。
+
+## 速度预设与自适应
+
+| profile | 二维码 | 初始页面 | 页面范围 | 截图等待范围 | 超时 |
+|---|---:|---:|---:|---:|---:|
+| `safe` | 512px | 1200B | 512–2000B | 200–1200ms | 2500ms |
+| `balanced`（默认） | 512px | 2000B | 512–2800B | 80–800ms | 1500ms |
+| `fast` | 640px | 2400B | 1024–2850B | 40–500ms | 900ms |
+
+发送端每连续成功 4 页增加 128 字节；页面超时或无法识别时按 0.7 倍降低密度并重传同一文件偏移。接收端根据远程桌面的实际刷新耗时自动调整截图等待，不会在二维码未变化时连续翻页。
+
+发送端参数：
+
+- `--input <路径>`：明确指定输入文件。
+- `--text`：发送前验证输入是 UTF-8。
+- `--profile safe|balanced|fast`：选择预设。
+- `--qr-size <像素>`：二维码实际显示尺寸。
+- `--min-page-size`、`--initial-page-size`、`--max-page-size`：页面自适应范围。
+- `--fixed-page-size <字节>`：固定页面大小，关闭载荷自动升降。
+- `--legacy`：生成与原版接收端兼容的二维码页。
+
+接收端参数：
+
+- `--output <路径>`：明确指定最终输出文件。
+- `--text`：完成后严格验证 UTF-8。
+- `--overwrite`：允许覆盖已存在目标。
+- `--profile safe|balanced|fast`：选择预设。
+- `--start-delay <秒>`：开始读取前的切换窗口倒计时，默认 5 秒。
+- `--initial-delay`、`--min-delay`、`--max-delay`：自适应截图等待时间（毫秒）。
+- `--frame-timeout <毫秒>`：新页面等待超时。
+- `--legacy`：接收原版发送端协议；可用 `--page-delay` 设置原版固定等待。
+
+显式参数优先于 profile 预设。吞吐量主要由“实际每页有效字节 ÷ 每页确认周期”决定；二维码过密或等待过短都会触发降速，不能只追求单个参数的最大值。
+
+## 原版兼容
+
+新发送端配原版接收端：
+
+```powershell
+java -jar .\qrtransfer-cli-1.0-SNAPSHOT.jar send `
+  --input "<输入文件路径>" `
+  --legacy
+```
+
+新接收端配原版发送端：
+
+```bash
+java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar receive \
+  --output "<输出文件路径>" \
+  --legacy \
+  --page-delay 500
+```
+
+V2 默认模式必须由新的统一 CLI 两端配对使用。协议、确认键、自适应算法和失败恢复细节见[自适应 V2 协议说明](doc/adaptive-protocol.md)。
+
+## 完整性
+
+V2 每页使用 CRC32C 校验页号、偏移和载荷，完成后校验文件大小与 MD5。接收内容先写入临时 `.part` 文件，全部校验通过后才原子移动为最终文件；失败、中断或校验不一致时不会发布最终输出。本功能不提供加密或身份认证。
+
+# 旧版剪贴板文本桥接
+
+`clipboard-sender` 与 `clipboard-receiver` 保留原用法，只接受 UTF-8 纯文本。新使用场景建议改用统一 CLI，并通过 `--text` 获得相同的文本校验保护。
 
 # 上游来源与开源许可
 
