@@ -41,4 +41,21 @@ class TransferMetricsTest {
         assertTrue(summary.contains("传输统计：失败"));
         assertTrue(summary.contains("原因：MD5 校验失败"));
     }
+
+    @Test
+    void reportsConfirmedSenderProgressAndEta() {
+        TransferMetrics metrics = new TransferMetrics();
+        metrics.start(1_000_000_000L);
+        metrics.acceptedPage(1_000);
+        metrics.acceptedPage(1_000);
+        metrics.acceptedPage(1_000);
+
+        String progress = metrics.progressSummary(6_000, 4_000_000_000L);
+
+        assertTrue(progress.contains("已确认 2.93 KiB / 5.86 KiB (50.0%)"));
+        assertTrue(progress.contains("剩余 2.93 KiB"));
+        assertTrue(progress.contains("已用 3.00s"));
+        assertTrue(progress.contains("平均 1000.00 B/s"));
+        assertTrue(progress.contains("预计剩余 3.00s"));
+    }
 }

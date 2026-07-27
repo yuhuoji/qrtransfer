@@ -6,9 +6,11 @@ import org.wowtools.qrtransfer.common.util.BinaryQRCodeUtil;
 import org.wowtools.qrtransfer.common.util.Md5Util;
 
 import javax.swing.JFrame;
+import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 import java.awt.BorderLayout;
 import java.awt.Canvas;
 import java.awt.Dimension;
@@ -48,9 +50,11 @@ final class AdaptiveSenderWindow extends JFrame {
     private final QrCanvas canvas;
     private final BufferedImage testImage;
     private final JTextArea log = new JTextArea();
+    private final JTextArea progress = new JTextArea(3, 36);
     private final long sessionId = new SecureRandom().nextLong();
     private final java.awt.KeyEventDispatcher dispatcher = this::dispatchKey;
     private final TransferMetrics metrics = new TransferMetrics();
+    private final Timer progressTimer = new Timer(1000, event -> updateProgress());
 
     private RandomAccessFile input;
     private long fileSize;
@@ -75,13 +79,22 @@ final class AdaptiveSenderWindow extends JFrame {
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLayout(new BorderLayout(12, 12));
         add(canvas, BorderLayout.WEST);
+        progress.setEditable(false);
+        progress.setFocusable(false);
+        progress.setLineWrap(true);
+        progress.setWrapStyleWord(true);
+        progress.setText("传输进度：正在准备文件...");
         log.setEditable(false);
         log.setLineWrap(true);
-        add(new JScrollPane(log), BorderLayout.CENTER);
+        JPanel details = new JPanel(new BorderLayout(0, 8));
+        details.add(progress, BorderLayout.NORTH);
+        details.add(new JScrollPane(log), BorderLayout.CENTER);
+        add(details, BorderLayout.CENTER);
         setSize(Math.max(config.qrSize + 500, 820), Math.max(config.qrSize + 90, 480));
         setLocationByPlatform(true);
         setVisible(true);
         KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(dispatcher);
+        progressTimer.start();
         append("正在计算文件 MD5 并校准二维码容量...");
         Thread prepare = new Thread(this::prepare, "qrtransfer-v2-prepare");
         prepare.setDaemon(true);
@@ -90,6 +103,7 @@ final class AdaptiveSenderWindow extends JFrame {
 
     @Override
     public void dispose() {
+        progressTimer.stop();
         KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(dispatcher);
         closeInput();
         super.dispose();
@@ -126,6 +140,7 @@ final class AdaptiveSenderWindow extends JFrame {
                     append("二维码本机可识别上限 " + calibratedMax + " 字节；当前 "
                             + pageSizer.current() + " 字节/页");
                     append("请保持本窗口激活；接收端将自动确认、升速和降密重传。");
+                    updateProgress();
                 } catch (Exception e) {
                     fail(e);
                 }
@@ -172,6 +187,7 @@ final class AdaptiveSenderWindow extends JFrame {
             return;
         }
         metrics.start();
+        updateProgress();
         headerVisible = false;
         currentOffset = 0;
         currentPageNumber = 0;
@@ -183,10 +199,12 @@ final class AdaptiveSenderWindow extends JFrame {
             return;
         }
         metrics.acceptedPage(currentPage.getPayload().length);
+        updateProgress();
         if (currentPage.isEnd()) {
             completed = true;
             ready = false;
             metrics.finish();
+            updateProgress();
             append("接收端已确认文件完整性校验成功");
             append(metrics.successSummary());
             return;
@@ -224,6 +242,7 @@ final class AdaptiveSenderWindow extends JFrame {
             showFrame(header);
             headerVisible = true;
             append("已重置到文件头");
+            updateProgress();
         } catch (Exception e) {
             fail(e);
         }
@@ -298,6 +317,7 @@ final class AdaptiveSenderWindow extends JFrame {
 
     private void fail(Exception e) {
         ready = false;
+        updateProgress();
         append("发送失败：" + e.getMessage());
         append(metrics.failureSummary(e.getMessage()));
     }
@@ -309,6 +329,18 @@ final class AdaptiveSenderWindow extends JFrame {
         }
         log.append(message + System.lineSeparator());
         log.setCaretPosition(log.getDocument().getLength());
+    }
+
+    private void updateProgress() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::updateProgress);
+            return;
+        }
+        if (header == null) {
+            progress.setText("传输进度：正在准备文件...");
+            return;
+        }
+        progress.setText(metrics.progressSummary(fileSize));
     }
 
     private void closeInput() {

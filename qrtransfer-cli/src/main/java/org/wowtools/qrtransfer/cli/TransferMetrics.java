@@ -96,6 +96,32 @@ final class TransferMetrics {
         return finishedNanos == 0 ? System.nanoTime() : finishedNanos;
     }
 
+    String progressSummary(long totalBytes) {
+        return progressSummary(totalBytes, System.nanoTime());
+    }
+
+    String progressSummary(long totalBytes, long nowNanos) {
+        long total = Math.max(0, totalBytes);
+        long sent = Math.min(bytes, total);
+        long remaining = total - sent;
+        if (startedNanos == 0) {
+            return "传输进度：总量 " + formatBytes(total) + "；等待接收端确认";
+        }
+
+        long elapsedNanos = Math.max(0, (finishedNanos == 0 ? nowNanos : finishedNanos) - startedNanos);
+        double seconds = elapsedNanos / 1_000_000_000.0;
+        double bytesPerSecond = seconds > 0 ? sent / seconds : 0;
+        String eta = pages < 3 || bytesPerSecond <= 0
+                ? "计算中（确认 3 页后显示）"
+                : formatDuration(remaining / bytesPerSecond);
+        double percent = total == 0 ? 100 : sent * 100.0 / total;
+        return "传输进度：已确认 " + formatBytes(sent) + " / " + formatBytes(total)
+                + " (" + String.format(Locale.ROOT, "%.1f%%", percent) + ")，剩余 "
+                + formatBytes(remaining) + System.lineSeparator()
+                + "已用 " + formatDuration(seconds) + "，平均 " + formatRate(bytesPerSecond)
+                + "，预计剩余 " + eta;
+    }
+
     int recognitionFailures() {
         return recognitionFailures;
     }
