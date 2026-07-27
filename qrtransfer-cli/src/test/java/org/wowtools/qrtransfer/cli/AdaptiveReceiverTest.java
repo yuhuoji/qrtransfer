@@ -63,6 +63,28 @@ class AdaptiveReceiverTest {
         assertFalse(Files.exists(output));
     }
 
+    @Test
+    void repeatedPreviousPageEventuallyRequestsExpectedPageRetransmission() throws Exception {
+        byte[] expected = {7, 8};
+        Path source = tempDir.resolve("duplicate-source.bin");
+        Files.write(source, expected);
+        long session = 5L;
+        byte[] page0 = V2Frame.data(session, 0, 0, new byte[]{7}, false).encode();
+        ArrayDeque<byte[]> frames = new ArrayDeque<>();
+        frames.add(V2Frame.header(session, expected.length,
+                Md5Util.getFileMD5(source.toFile()), false).encode());
+        frames.add(page0);
+        frames.add(page0);
+        frames.add(V2Frame.data(session, 1, 1, new byte[]{8}, true).encode());
+        RecordingController controller = new RecordingController();
+
+        AdaptiveReceiver.receive(frames::removeFirst, controller,
+                tempDir.resolve("duplicate-output.bin"),
+                false, false, 0, 0, 0, 0, ignored -> { });
+
+        assertEquals(List.of(1), controller.rejectedPages);
+    }
+
     private static final class NoopController implements AdaptiveReceiver.Controller {
         @Override
         public void acknowledge(int pageNumber) {
@@ -75,6 +97,7 @@ class AdaptiveReceiverTest {
 
     private static final class RecordingController implements AdaptiveReceiver.Controller {
         private final List<Integer> acknowledgedPages = new ArrayList<>();
+        private final List<Integer> rejectedPages = new ArrayList<>();
 
         @Override
         public void acknowledge(int pageNumber) {
@@ -83,6 +106,7 @@ class AdaptiveReceiverTest {
 
         @Override
         public void reject(int pageNumber) {
+            rejectedPages.add(pageNumber);
         }
     }
 }

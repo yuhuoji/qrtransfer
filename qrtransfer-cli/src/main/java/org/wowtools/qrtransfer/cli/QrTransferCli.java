@@ -24,7 +24,22 @@ public final class QrTransferCli {
     public static void main(String[] args) {
         try {
             if (args.length == 0) {
-                throw new IllegalArgumentException("缺少 send 或 receive 子命令");
+                throw new IllegalArgumentException(
+                        "缺少 send、receive、benchmark-send 或 benchmark-receive 子命令");
+            }
+            if ("benchmark-send".equals(args[0])) {
+                BenchmarkSendOptions options = BenchmarkSendOptions.parse(args);
+                SwingUtilities.invokeLater(() -> {
+                    BenchmarkSenderWindow.Config config = new BenchmarkSenderWindow.Config(
+                            options.qrSize, options.minPageSize,
+                            options.initialPageSize, options.maxPageSize);
+                    new BenchmarkSenderWindow(config).showWindow();
+                });
+                return;
+            }
+            if ("benchmark-receive".equals(args[0])) {
+                benchmarkReceive(BenchmarkReceiveOptions.parse(args));
+                return;
             }
             if ("send".equals(args[0])) {
                 SendOptions options = SendOptions.parse(args);
@@ -118,6 +133,42 @@ public final class QrTransferCli {
         System.out.println(result.metrics.successSummary());
     }
 
+    private static void benchmarkReceive(BenchmarkReceiveOptions options) throws Exception {
+        Robot robot;
+        try {
+            robot = new Robot();
+        } catch (AWTException e) {
+            throw new IllegalStateException("无法创建屏幕读取和键盘控制器: " + e.getMessage(), e);
+        }
+        countdown(options.startDelaySeconds);
+        System.out.println("等待 adaptive V2 测速头；请保持测速发送窗口完整可见并激活。");
+        BenchmarkReport report = BenchmarkReceiver.run(
+                () -> capture(robot, true),
+                new BenchmarkReceiver.Controller() {
+                    @Override
+                    public void acknowledge(int pageNumber) {
+                        press(robot, pageNumber % 2 == 0 ? '1' : '2');
+                    }
+
+                    @Override
+                    public void reject(int pageNumber) {
+                        press(robot, pageNumber % 2 == 0 ? '3' : '4');
+                    }
+
+                    @Override
+                    public void stop() {
+                        press(robot, '5');
+                    }
+                },
+                options.durationSeconds,
+                options.initialDelay,
+                options.minDelay,
+                options.maxDelay,
+                options.frameTimeout,
+                System.out::println);
+        System.out.println(report.format());
+    }
+
     private static byte[] capture(Robot robot, boolean binary) {
         Dimension size = Toolkit.getDefaultToolkit().getScreenSize();
         BufferedImage image = robot.createScreenCapture(new Rectangle(size));
@@ -150,6 +201,13 @@ public final class QrTransferCli {
                 + " [--text] [--legacy] [--overwrite] [--profile safe|balanced|fast]"
                 + " [--start-delay 秒] [--initial-delay ms] [--min-delay ms]"
                 + " [--max-delay ms] [--frame-timeout ms] [--page-delay ms]");
+        System.err.println("测速发送: java -jar qrtransfer-cli-1.0-SNAPSHOT.jar benchmark-send"
+                + " [--profile safe|balanced|fast] [--qr-size N]"
+                + " [--min-page-size N] [--initial-page-size N] [--max-page-size N]");
+        System.err.println("测速接收: java -jar qrtransfer-cli-1.0-SNAPSHOT.jar benchmark-receive"
+                + " [--duration 30-1800] [--start-delay 秒]"
+                + " [--initial-delay ms] [--min-delay ms]"
+                + " [--max-delay ms] [--frame-timeout ms]");
     }
 
     static final class SendOptions {
@@ -322,13 +380,133 @@ public final class QrTransferCli {
         }
     }
 
+    static final class BenchmarkSendOptions {
+        final int qrSize;
+        final int minPageSize;
+        final int initialPageSize;
+        final int maxPageSize;
+
+        private BenchmarkSendOptions(int qrSize, int minPageSize,
+                                     int initialPageSize, int maxPageSize) {
+            this.qrSize = qrSize;
+            this.minPageSize = minPageSize;
+            this.initialPageSize = initialPageSize;
+            this.maxPageSize = maxPageSize;
+        }
+
+        static BenchmarkSendOptions parse(String[] args) {
+            TransferProfile profile = profile(args, TransferProfile.FAST);
+            int qrSize = profile.qrSize;
+            int min = profile.minPageSize;
+            int initial = profile.initialPageSize;
+            int max = profile.maxPageSize;
+            for (int i = 1; i < args.length; i++) {
+                switch (args[i]) {
+                    case "--profile":
+                        i++;
+                        break;
+                    case "--qr-size":
+                        qrSize = integer(value(args, ++i, "--qr-size"), "--qr-size");
+                        break;
+                    case "--min-page-size":
+                        min = integer(value(args, ++i, "--min-page-size"), "--min-page-size");
+                        break;
+                    case "--initial-page-size":
+                        initial = integer(
+                                value(args, ++i, "--initial-page-size"), "--initial-page-size");
+                        break;
+                    case "--max-page-size":
+                        max = integer(value(args, ++i, "--max-page-size"), "--max-page-size");
+                        break;
+                    default:
+                        throw new IllegalArgumentException("未知测速发送参数: " + args[i]);
+                }
+            }
+            if (qrSize < 128 || min < 32 || max < min || initial < min || initial > max) {
+                throw new IllegalArgumentException("测速二维码尺寸或页面大小范围无效");
+            }
+            return new BenchmarkSendOptions(qrSize, min, initial, max);
+        }
+    }
+
+    static final class BenchmarkReceiveOptions {
+        final long durationSeconds;
+        final long startDelaySeconds;
+        final long initialDelay;
+        final long minDelay;
+        final long maxDelay;
+        final long frameTimeout;
+
+        private BenchmarkReceiveOptions(long durationSeconds, long startDelaySeconds,
+                                        long initialDelay, long minDelay,
+                                        long maxDelay, long frameTimeout) {
+            this.durationSeconds = durationSeconds;
+            this.startDelaySeconds = startDelaySeconds;
+            this.initialDelay = initialDelay;
+            this.minDelay = minDelay;
+            this.maxDelay = maxDelay;
+            this.frameTimeout = frameTimeout;
+        }
+
+        static BenchmarkReceiveOptions parse(String[] args) {
+            TransferProfile profile = profile(args, TransferProfile.FAST);
+            long duration = 180;
+            long startDelay = 5;
+            long initialDelay = profile.initialDelay;
+            long minDelay = profile.minDelay;
+            long maxDelay = profile.maxDelay;
+            long timeout = profile.frameTimeout;
+            for (int i = 1; i < args.length; i++) {
+                switch (args[i]) {
+                    case "--profile":
+                        i++;
+                        break;
+                    case "--duration":
+                        duration = number(value(args, ++i, "--duration"), "--duration");
+                        break;
+                    case "--start-delay":
+                        startDelay = number(value(args, ++i, "--start-delay"), "--start-delay");
+                        break;
+                    case "--initial-delay":
+                        initialDelay = number(
+                                value(args, ++i, "--initial-delay"), "--initial-delay");
+                        break;
+                    case "--min-delay":
+                        minDelay = number(value(args, ++i, "--min-delay"), "--min-delay");
+                        break;
+                    case "--max-delay":
+                        maxDelay = number(value(args, ++i, "--max-delay"), "--max-delay");
+                        break;
+                    case "--frame-timeout":
+                        timeout = number(value(args, ++i, "--frame-timeout"), "--frame-timeout");
+                        break;
+                    default:
+                        throw new IllegalArgumentException("未知测速接收参数: " + args[i]);
+                }
+            }
+            if (duration < 30 || duration > 1800) {
+                throw new IllegalArgumentException("--duration 必须位于 30–1800 秒");
+            }
+            if (startDelay < 0 || minDelay < 0 || maxDelay < minDelay
+                    || initialDelay < minDelay || initialDelay > maxDelay || timeout <= 0) {
+                throw new IllegalArgumentException("测速等待时间参数无效");
+            }
+            return new BenchmarkReceiveOptions(
+                    duration, startDelay, initialDelay, minDelay, maxDelay, timeout);
+        }
+    }
+
     private static TransferProfile profile(String[] args) {
+        return profile(args, TransferProfile.BALANCED);
+    }
+
+    private static TransferProfile profile(String[] args, TransferProfile fallback) {
         for (int i = 1; i < args.length; i++) {
             if ("--profile".equals(args[i])) {
                 return TransferProfile.parse(value(args, i + 1, "--profile"));
             }
         }
-        return TransferProfile.BALANCED;
+        return fallback;
     }
 
     private static String value(String[] args, int index, String option) {

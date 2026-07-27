@@ -15,8 +15,12 @@ final class TransferMetrics {
     private int sequenceErrors;
 
     void start() {
+        start(System.nanoTime());
+    }
+
+    void start(long nowNanos) {
         if (startedNanos == 0) {
-            startedNanos = System.nanoTime();
+            startedNanos = nowNanos;
         }
     }
 
@@ -34,8 +38,12 @@ final class TransferMetrics {
     }
 
     void finish() {
+        finish(System.nanoTime());
+    }
+
+    void finish(long nowNanos) {
         if (startedNanos != 0 && finishedNanos == 0) {
-            finishedNanos = System.nanoTime();
+            finishedNanos = nowNanos;
         }
     }
 
@@ -70,6 +78,22 @@ final class TransferMetrics {
 
     int pages() {
         return pages;
+    }
+
+    long bytes() {
+        return bytes;
+    }
+
+    long elapsedNanos() {
+        if (startedNanos == 0) {
+            return 0;
+        }
+        long end = finishedNanos == 0 ? System.nanoTime() : finishedNanos;
+        return Math.max(0, end - startedNanos);
+    }
+
+    long finishedNanos() {
+        return finishedNanos == 0 ? System.nanoTime() : finishedNanos;
     }
 
     int recognitionFailures() {
@@ -127,14 +151,6 @@ final class TransferMetrics {
                 + "，有效数据 " + formatBytes(bytes)
                 + "，平均速度 " + formatRate(bytesPerSecond)
                 + "，成功页 " + pages;
-    }
-
-    private long elapsedNanos() {
-        if (startedNanos == 0) {
-            return 0;
-        }
-        long end = finishedNanos == 0 ? System.nanoTime() : finishedNanos;
-        return Math.max(0, end - startedNanos);
     }
 
     private static String formatDuration(double seconds) {

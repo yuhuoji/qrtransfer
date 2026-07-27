@@ -11,12 +11,14 @@ public final class V2Frame {
     public static final byte VERSION = 2;
     public static final byte TYPE_HEADER = 1;
     public static final byte TYPE_DATA = 2;
+    public static final byte TYPE_BENCHMARK_HEADER = 3;
     public static final short FLAG_END = 1;
     public static final short FLAG_TEXT = 2;
     private static final int MD5_BYTES = 16;
     private static final int COMMON_BYTES = 4 + 1 + 1 + 2 + 8;
     private static final int HEADER_BYTES_WITHOUT_CRC = COMMON_BYTES + 8 + MD5_BYTES;
     private static final int DATA_BYTES_WITHOUT_PAYLOAD_OR_CRC = COMMON_BYTES + 4 + 8 + 4;
+    private static final int BENCHMARK_BYTES_WITHOUT_CRC = COMMON_BYTES + 4 + 4 + 4 + 4;
 
     private final byte type;
     private final short flags;
@@ -26,9 +28,14 @@ public final class V2Frame {
     private final int pageNumber;
     private final long offset;
     private final byte[] payload;
+    private final int qrSize;
+    private final int minPageSize;
+    private final int initialPageSize;
+    private final int maxPageSize;
 
     private V2Frame(byte type, short flags, long sessionId, long fileSize, byte[] md5,
-                    int pageNumber, long offset, byte[] payload) {
+                    int pageNumber, long offset, byte[] payload, int qrSize,
+                    int minPageSize, int initialPageSize, int maxPageSize) {
         this.type = type;
         this.flags = flags;
         this.sessionId = sessionId;
@@ -37,26 +44,49 @@ public final class V2Frame {
         this.pageNumber = pageNumber;
         this.offset = offset;
         this.payload = payload == null ? null : payload.clone();
+        this.qrSize = qrSize;
+        this.minPageSize = minPageSize;
+        this.initialPageSize = initialPageSize;
+        this.maxPageSize = maxPageSize;
     }
 
     public static V2Frame header(long sessionId, long fileSize, String md5Hex, boolean text) {
         return new V2Frame(TYPE_HEADER, text ? FLAG_TEXT : 0, sessionId, fileSize,
-                hexToBytes(md5Hex), -1, 0, null);
+                hexToBytes(md5Hex), -1, 0, null, 0, 0, 0, 0);
     }
 
     public static V2Frame data(long sessionId, int pageNumber, long offset, byte[] payload, boolean end) {
         return new V2Frame(TYPE_DATA, end ? FLAG_END : 0, sessionId, -1, null,
-                pageNumber, offset, payload);
+                pageNumber, offset, payload, 0, 0, 0, 0);
+    }
+
+    public static V2Frame benchmarkHeader(long sessionId, int qrSize, int minPageSize,
+                                          int initialPageSize, int maxPageSize) {
+        if (qrSize < 128 || minPageSize < 32 || maxPageSize < minPageSize
+                || initialPageSize < minPageSize || initialPageSize > maxPageSize) {
+            throw new IllegalArgumentException("测速参数无效");
+        }
+        return new V2Frame(TYPE_BENCHMARK_HEADER, (short) 0, sessionId, -1, null,
+                -1, 0, null, qrSize, minPageSize, initialPageSize, maxPageSize);
     }
 
     public byte[] encode() {
-        int bodySize = type == TYPE_HEADER
-                ? HEADER_BYTES_WITHOUT_CRC
-                : DATA_BYTES_WITHOUT_PAYLOAD_OR_CRC + payload.length;
+        int bodySize;
+        if (type == TYPE_HEADER) {
+            bodySize = HEADER_BYTES_WITHOUT_CRC;
+        } else if (type == TYPE_BENCHMARK_HEADER) {
+            bodySize = BENCHMARK_BYTES_WITHOUT_CRC;
+        } else if (type == TYPE_DATA) {
+            bodySize = DATA_BYTES_WITHOUT_PAYLOAD_OR_CRC + payload.length;
+        } else {
+            throw new IllegalStateException("未知帧类型: " + type);
+        }
         ByteBuffer buffer = ByteBuffer.allocate(bodySize + Integer.BYTES).order(ByteOrder.BIG_ENDIAN);
         buffer.putInt(MAGIC).put(VERSION).put(type).putShort(flags).putLong(sessionId);
         if (type == TYPE_HEADER) {
             buffer.putLong(fileSize).put(md5);
+        } else if (type == TYPE_BENCHMARK_HEADER) {
+            buffer.putInt(qrSize).putInt(minPageSize).putInt(initialPageSize).putInt(maxPageSize);
         } else if (type == TYPE_DATA) {
             buffer.putInt(pageNumber).putLong(offset).putInt(payload.length).put(payload);
         } else {
@@ -94,7 +124,18 @@ public final class V2Frame {
             }
             byte[] md5 = new byte[MD5_BYTES];
             buffer.get(md5);
-            return new V2Frame(type, flags, sessionId, fileSize, md5, -1, 0, null);
+            return new V2Frame(type, flags, sessionId, fileSize, md5, -1, 0, null,
+                    0, 0, 0, 0);
+        }
+        if (type == TYPE_BENCHMARK_HEADER) {
+            if (encoded.length != BENCHMARK_BYTES_WITHOUT_CRC + Integer.BYTES) {
+                throw new IllegalArgumentException("V2 测速头长度错误");
+            }
+            int qrSize = buffer.getInt();
+            int minPageSize = buffer.getInt();
+            int initialPageSize = buffer.getInt();
+            int maxPageSize = buffer.getInt();
+            return benchmarkHeader(sessionId, qrSize, minPageSize, initialPageSize, maxPageSize);
         }
         if (type == TYPE_DATA) {
             int pageNumber = buffer.getInt();
@@ -106,7 +147,8 @@ public final class V2Frame {
             }
             byte[] payload = new byte[length];
             buffer.get(payload);
-            return new V2Frame(type, flags, sessionId, -1, null, pageNumber, offset, payload);
+            return new V2Frame(type, flags, sessionId, -1, null, pageNumber, offset, payload,
+                    0, 0, 0, 0);
         }
         throw new IllegalArgumentException("未知 V2 帧类型: " + type);
     }
@@ -121,6 +163,10 @@ public final class V2Frame {
 
     public boolean isData() {
         return type == TYPE_DATA;
+    }
+
+    public boolean isBenchmarkHeader() {
+        return type == TYPE_BENCHMARK_HEADER;
     }
 
     public boolean isEnd() {
@@ -153,6 +199,22 @@ public final class V2Frame {
 
     public byte[] getPayload() {
         return payload == null ? null : payload.clone();
+    }
+
+    public int getQrSize() {
+        return qrSize;
+    }
+
+    public int getMinPageSize() {
+        return minPageSize;
+    }
+
+    public int getInitialPageSize() {
+        return initialPageSize;
+    }
+
+    public int getMaxPageSize() {
+        return maxPageSize;
     }
 
     private static int crc32c(byte[] bytes, int offset, int length) {
@@ -197,6 +259,8 @@ public final class V2Frame {
         V2Frame that = (V2Frame) other;
         return type == that.type && flags == that.flags && sessionId == that.sessionId
                 && fileSize == that.fileSize && pageNumber == that.pageNumber && offset == that.offset
+                && qrSize == that.qrSize && minPageSize == that.minPageSize
+                && initialPageSize == that.initialPageSize && maxPageSize == that.maxPageSize
                 && Arrays.equals(md5, that.md5) && Arrays.equals(payload, that.payload);
     }
 

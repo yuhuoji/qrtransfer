@@ -120,8 +120,17 @@ final class AdaptiveReceiver {
                 if (page == expectedPage - 1) {
                     controller.acknowledge(page);
                     metrics.duplicatePage();
-                    requestStarted = System.nanoTime();
-                    listener.log("重复页 " + page + "，已重新确认");
+                    if (elapsed >= frameTimeout) {
+                        controller.reject(expectedPage);
+                        delay.onFailure();
+                        metrics.timeout();
+                        metrics.retry();
+                        requestStarted = System.nanoTime();
+                        listener.log("重复页 " + page + " 持续超时，已重新确认并请求页面 "
+                                + expectedPage + " 降密重传");
+                    } else {
+                        listener.log("重复页 " + page + "，已重新确认");
+                    }
                     continue;
                 }
                 if (page != expectedPage || frame.getOffset() != expectedOffset) {

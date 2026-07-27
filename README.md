@@ -106,6 +106,29 @@ java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar receive \
 
 Adaptive V2 传输成功或失败后会在发送窗口和接收终端输出简短统计，包括耗时、有效数据量、平均速度、成功页数、识别失败、重复页、页序错误、超时、重传与降密次数。统计仅显示在本次运行界面中，默认不写入独立日志文件；逐页事件仍可在界面实时查看。
 
+## 独立端到端测速
+
+测速与正式文件传输相互独立，不读取真实文件、不生成输出文件，也不会修改任何 profile。真实端到端速度必须同时运行云桌面发送端和本机接收端。
+
+先在云桌面启动测速发送窗口：
+
+```powershell
+cd qrtransfer-cli\target
+java -jar .\qrtransfer-cli-1.0-SNAPSHOT.jar benchmark-send
+```
+
+再在本机启动测速接收端：
+
+```bash
+cd qrtransfer-cli/target
+java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar benchmark-receive \
+  --duration 180
+```
+
+接收端默认倒计时 5 秒，随后运行 180 秒。倒计时期间切回云桌面并激活测速发送窗口；测试期间保持二维码完整可见，不要切换窗口。`--duration` 支持 30–1800 秒，`--start-delay` 可调整开始前倒计时。
+
+测速默认以当前 `fast` 参数为探测起点，并自动升降页面大小和截图等待。结束后接收端报告持续平均速度、10 秒窗口峰值、重传率、最后 60 秒稳定页面与周期，并给出推荐 profile 及可直接复制的发送/接收参数。结果只显示在当前终端，不保存或自动应用；分辨率、缩放、网络或远程桌面刷新条件变化后应重新测试。
+
 ## 原版兼容
 
 新发送端配原版接收端：
