@@ -2,8 +2,8 @@ package org.wowtools.qrtransfer.cli;
 
 enum TransferProfile {
     SAFE("safe", 512, 512, 1000, 1600, 300, 200, 1200, 2500),
-    BALANCED("balanced", 512, 512, 1600, 2000, 200, 80, 800, 1500),
-    FAST("fast", 640, 384, 1800, 2100, 120, 40, 500, 900);
+    BALANCED("balanced", 512, 512, 1600, 2100, 150, 60, 600, 1200),
+    FAST("fast", 640, 384, 1800, 2150, 90, 30, 350, 800);
 
     final String cliName;
     final int qrSize;
