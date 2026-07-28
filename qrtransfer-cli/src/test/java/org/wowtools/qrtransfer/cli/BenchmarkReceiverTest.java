@@ -55,7 +55,7 @@ class BenchmarkReceiverTest {
                         stopped.set(true);
                     }
                 },
-                1, 100, 50, 200, 500, ignored -> { }, clock, clock::sleep);
+                1, 100, 50, 200, 500, 3, ignored -> { }, clock, clock::sleep);
 
         assertTrue(stopped.get());
         assertTrue(report.averageBytesPerSecond() > 0);

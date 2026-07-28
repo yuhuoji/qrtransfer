@@ -32,6 +32,8 @@ class BenchmarkReportTest {
         assertTrue(report.peakBytesPerSecond() > 0);
         assertTrue(report.format().contains("10 秒窗口峰值"));
         assertTrue(report.format().contains("--qr-size 640"));
+        assertTrue(report.format().contains("--initial-delay 0"));
+        assertTrue(report.format().contains("--downshift-after-timeouts 3"));
     }
 
     @Test
@@ -51,6 +53,7 @@ class BenchmarkReportTest {
 
         assertEquals("safe", report.recommendedProfile());
         assertTrue(report.format().contains("重传率 50.0%"));
+        assertTrue(report.format().contains("--downshift-after-timeouts 1"));
     }
 
     @Test

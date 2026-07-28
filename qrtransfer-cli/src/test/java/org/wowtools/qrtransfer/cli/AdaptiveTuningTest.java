@@ -10,17 +10,24 @@ class AdaptiveTuningTest {
     void acceleratedProfilesUseExpectedBounds() {
         assertEquals(1600, TransferProfile.BALANCED.initialPageSize);
         assertEquals(2100, TransferProfile.BALANCED.maxPageSize);
-        assertEquals(150, TransferProfile.BALANCED.initialDelay);
-        assertEquals(60, TransferProfile.BALANCED.minDelay);
-        assertEquals(600, TransferProfile.BALANCED.maxDelay);
+        assertEquals(0, TransferProfile.BALANCED.initialDelay);
+        assertEquals(0, TransferProfile.BALANCED.minDelay);
+        assertEquals(0, TransferProfile.BALANCED.maxDelay);
         assertEquals(1200, TransferProfile.BALANCED.frameTimeout);
+        assertEquals(3, TransferProfile.BALANCED.downshiftAfterTimeouts);
+        assertTrue(TransferProfile.BALANCED.pageLocalRecovery);
 
         assertEquals(1800, TransferProfile.FAST.initialPageSize);
         assertEquals(2150, TransferProfile.FAST.maxPageSize);
-        assertEquals(90, TransferProfile.FAST.initialDelay);
-        assertEquals(30, TransferProfile.FAST.minDelay);
-        assertEquals(350, TransferProfile.FAST.maxDelay);
+        assertEquals(0, TransferProfile.FAST.initialDelay);
+        assertEquals(0, TransferProfile.FAST.minDelay);
+        assertEquals(0, TransferProfile.FAST.maxDelay);
         assertEquals(800, TransferProfile.FAST.frameTimeout);
+        assertEquals(3, TransferProfile.FAST.downshiftAfterTimeouts);
+        assertTrue(TransferProfile.FAST.pageLocalRecovery);
+
+        assertEquals(1, TransferProfile.SAFE.downshiftAfterTimeouts);
+        assertTrue(!TransferProfile.SAFE.pageLocalRecovery);
     }
 
     @Test
@@ -44,6 +51,19 @@ class AdaptiveTuningTest {
     }
 
     @Test
+    void pageLocalFailureRestoresTargetOnNextPage() {
+        AdaptivePageSizer sizer = new AdaptivePageSizer(384, 1800, 2150, null, true);
+        assertTrue(sizer.onFailure());
+        assertEquals(1260, sizer.current());
+        assertEquals(1800, sizer.target());
+
+        sizer.onSuccess();
+
+        assertEquals(1800, sizer.current());
+        assertEquals(1800, sizer.target());
+    }
+
+    @Test
     void delayMovesWithinBounds() {
         AdaptiveDelay delay = new AdaptiveDelay(200, 80, 800);
         delay.onSuccess(100);
@@ -55,21 +75,11 @@ class AdaptiveTuningTest {
     }
 
     @Test
-    void acceleratedDelaysRecoverWithinNewBounds() {
-        AdaptiveDelay balanced = new AdaptiveDelay(150, 60, 600);
-        balanced.onSuccess(60);
-        assertTrue(balanced.current() >= 60);
-        for (int i = 0; i < 10; i++) {
-            balanced.onFailure();
-        }
-        assertEquals(600, balanced.current());
-
-        AdaptiveDelay fast = new AdaptiveDelay(90, 30, 350);
-        fast.onSuccess(30);
-        assertTrue(fast.current() >= 30);
-        for (int i = 0; i < 10; i++) {
-            fast.onFailure();
-        }
-        assertEquals(350, fast.current());
+    void zeroDelayProfilesRemainAtZero() {
+        AdaptiveDelay delay = new AdaptiveDelay(0, 0, 0);
+        delay.onSuccess(100);
+        assertEquals(0, delay.current());
+        delay.onFailure();
+        assertEquals(0, delay.current());
     }
 }

@@ -33,9 +33,10 @@ final class AdaptiveSenderWindow extends JFrame {
         final int initialPageSize;
         final int maxPageSize;
         final Integer fixedPageSize;
+        final boolean pageLocalRecovery;
 
         Config(Path input, boolean text, int qrSize, int minPageSize, int initialPageSize,
-               int maxPageSize, Integer fixedPageSize) {
+               int maxPageSize, Integer fixedPageSize, boolean pageLocalRecovery) {
             this.input = input;
             this.text = text;
             this.qrSize = qrSize;
@@ -43,6 +44,7 @@ final class AdaptiveSenderWindow extends JFrame {
             this.initialPageSize = initialPageSize;
             this.maxPageSize = maxPageSize;
             this.fixedPageSize = fixedPageSize;
+            this.pageLocalRecovery = pageLocalRecovery;
         }
     }
 
@@ -129,7 +131,7 @@ final class AdaptiveSenderWindow extends JFrame {
                         + config.minPageSize + " 字节");
             }
             pageSizer = new AdaptivePageSizer(config.minPageSize, initial,
-                    calibratedMax, config.fixedPageSize);
+                    calibratedMax, config.fixedPageSize, config.pageLocalRecovery);
             SwingUtilities.invokeLater(() -> {
                 try {
                     showFrame(header);
@@ -228,7 +230,8 @@ final class AdaptiveSenderWindow extends JFrame {
             return;
         }
         metrics.densityDrop();
-        append("接收端请求降密：" + old + " → " + pageSizer.current() + " 字节/页");
+        append("接收端请求" + recoveryScope() + "降密：" + old + " → "
+                + pageSizer.current() + " 字节/页");
         showCurrentPage();
     }
 
@@ -273,7 +276,8 @@ final class AdaptiveSenderWindow extends JFrame {
                     throw new IllegalStateException("页面 " + old + " 字节在当前二维码尺寸下无法识别");
                 }
                 metrics.densityDrop();
-                append("本机校准降密：" + old + " → " + pageSizer.current());
+                append("本机校准" + recoveryScope() + "降密：" + old + " → "
+                        + pageSizer.current());
             }
         } catch (Exception e) {
             fail(e);
@@ -308,6 +312,10 @@ final class AdaptiveSenderWindow extends JFrame {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private String recoveryScope() {
+        return config.pageLocalRecovery ? "当前页" : "全局";
     }
 
     private void showFrame(V2Frame frame) throws Exception {

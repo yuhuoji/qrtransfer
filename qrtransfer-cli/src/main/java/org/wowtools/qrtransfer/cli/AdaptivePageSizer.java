@@ -4,10 +4,17 @@ final class AdaptivePageSizer {
     private final int minimum;
     private final int maximum;
     private final Integer fixed;
+    private final boolean pageLocalRecovery;
+    private int target;
     private int current;
     private int successes;
 
     AdaptivePageSizer(int minimum, int initial, int maximum, Integer fixed) {
+        this(minimum, initial, maximum, fixed, false);
+    }
+
+    AdaptivePageSizer(int minimum, int initial, int maximum, Integer fixed,
+                      boolean pageLocalRecovery) {
         if (minimum < 32 || maximum < minimum || initial < minimum || initial > maximum) {
             throw new IllegalArgumentException("页面大小范围无效");
         }
@@ -17,20 +24,32 @@ final class AdaptivePageSizer {
         this.minimum = minimum;
         this.maximum = maximum;
         this.fixed = fixed;
-        this.current = fixed == null ? initial : fixed;
+        this.pageLocalRecovery = pageLocalRecovery;
+        this.target = fixed == null ? initial : fixed;
+        this.current = target;
     }
 
     int current() {
         return current;
     }
 
+    int target() {
+        return target;
+    }
+
     void onSuccess() {
         if (fixed != null) {
             return;
         }
+        if (pageLocalRecovery && current < target) {
+            current = target;
+            successes = 0;
+            return;
+        }
         successes++;
         if (successes >= 4) {
-            current = Math.min(maximum, current + 128);
+            target = Math.min(maximum, target + 128);
+            current = target;
             successes = 0;
         }
     }
@@ -43,6 +62,9 @@ final class AdaptivePageSizer {
         int reduced = Math.max(minimum, (int) Math.floor(current * 0.7));
         boolean changed = reduced < current;
         current = reduced;
+        if (!pageLocalRecovery) {
+            target = current;
+        }
         return changed;
     }
 }

@@ -35,15 +35,21 @@ final class BenchmarkReceiver {
 
     static BenchmarkReport run(FrameReader reader, Controller controller, long durationSeconds,
                                long initialDelay, long minDelay, long maxDelay, long frameTimeout,
-                               Listener listener) throws InterruptedException {
+                               int downshiftAfterTimeouts, Listener listener)
+            throws InterruptedException {
         return run(reader, controller, durationSeconds, initialDelay, minDelay, maxDelay,
-                frameTimeout, listener, System::nanoTime, Thread::sleep);
+                frameTimeout, downshiftAfterTimeouts,
+                listener, System::nanoTime, Thread::sleep);
     }
 
     static BenchmarkReport run(FrameReader reader, Controller controller, long durationSeconds,
                                long initialDelay, long minDelay, long maxDelay, long frameTimeout,
-                               Listener listener, Clock clock, Sleeper sleeper)
+                               int downshiftAfterTimeouts, Listener listener,
+                               Clock clock, Sleeper sleeper)
             throws InterruptedException {
+        if (downshiftAfterTimeouts < 1) {
+            throw new IllegalArgumentException("连续超时降密阈值必须大于 0");
+        }
         V2Frame header = waitForHeader(reader, listener, sleeper);
         TransferMetrics metrics = new TransferMetrics();
         List<BenchmarkReport.Sample> samples = new ArrayList<>();
@@ -54,6 +60,7 @@ final class BenchmarkReceiver {
         long requestStarted = started;
         long expectedOffset = 0;
         int expectedPage = 0;
+        int consecutiveTimeouts = 0;
         metrics.start(started);
         controller.acknowledge(0);
         listener.log("测速开始，持续 " + durationSeconds + " 秒；不写入任何文件");
@@ -72,12 +79,21 @@ final class BenchmarkReceiver {
                 if (frame == null) {
                     metrics.recognitionFailure();
                     if (elapsed >= frameTimeout) {
-                        controller.reject(expectedPage);
-                        delay.onFailure();
                         metrics.timeout();
-                        metrics.retry();
                         requestStarted = now;
-                        listener.log("页面 " + expectedPage + " 超时，测速中请求降密");
+                        consecutiveTimeouts++;
+                        if (consecutiveTimeouts >= downshiftAfterTimeouts) {
+                            controller.reject(expectedPage);
+                            delay.onFailure();
+                            metrics.retry();
+                            consecutiveTimeouts = 0;
+                            listener.log("页面 " + expectedPage + " 连续超时 "
+                                    + downshiftAfterTimeouts + " 次，测速中请求当前页降密");
+                        } else {
+                            listener.log("页面 " + expectedPage + " 超时（"
+                                    + consecutiveTimeouts + "/" + downshiftAfterTimeouts
+                                    + "），测速继续扫描且暂不降密");
+                        }
                     }
                     continue;
                 }
@@ -85,6 +101,7 @@ final class BenchmarkReceiver {
                     if (frame.getSessionId() == header.getSessionId() && elapsed >= frameTimeout) {
                         controller.acknowledge(0);
                         delay.onFailure();
+                        consecutiveTimeouts = 0;
                         requestStarted = now;
                     }
                     continue;
@@ -96,27 +113,17 @@ final class BenchmarkReceiver {
                 if (page == expectedPage - 1) {
                     controller.acknowledge(page);
                     metrics.duplicatePage();
-                    if (elapsed >= frameTimeout) {
-                        controller.reject(expectedPage);
-                        delay.onFailure();
-                        metrics.timeout();
-                        metrics.retry();
-                        requestStarted = now;
-                        listener.log("重复页 " + page + " 持续超时，测速中请求页面 "
-                                + expectedPage + " 降密重传");
-                    }
+                    consecutiveTimeouts = 0;
+                    requestStarted = now;
                     continue;
                 }
                 if (page != expectedPage || frame.getOffset() != expectedOffset) {
-                    controller.reject(expectedPage);
-                    delay.onFailure();
                     metrics.sequenceError();
-                    metrics.retry();
-                    requestStarted = now;
                     continue;
                 }
 
                 byte[] payload = frame.getPayload();
+                consecutiveTimeouts = 0;
                 metrics.acceptedPage(payload.length);
                 samples.add(new BenchmarkReport.Sample(now, payload.length, elapsed));
                 expectedOffset += payload.length;

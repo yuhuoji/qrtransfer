@@ -43,12 +43,16 @@ final class AdaptiveReceiver {
 
     static Result receive(FrameReader reader, Controller controller, Path output, boolean overwrite,
                           boolean requireText, long initialDelay, long minDelay, long maxDelay,
-                          long frameTimeout, Listener listener)
+                          long frameTimeout, int downshiftAfterTimeouts, Listener listener)
             throws IOException, InterruptedException {
+        if (downshiftAfterTimeouts < 1) {
+            throw new IllegalArgumentException("连续超时降密阈值必须大于 0");
+        }
         TransferMetrics metrics = new TransferMetrics();
         try {
             return receiveTracked(reader, controller, output, overwrite, requireText,
-                    initialDelay, minDelay, maxDelay, frameTimeout, listener, metrics);
+                    initialDelay, minDelay, maxDelay, frameTimeout,
+                    downshiftAfterTimeouts, listener, metrics);
         } catch (IOException | InterruptedException | RuntimeException e) {
             listener.log(metrics.failureSummary(e.getMessage()));
             throw e;
@@ -58,6 +62,7 @@ final class AdaptiveReceiver {
     private static Result receiveTracked(FrameReader reader, Controller controller, Path output,
                                          boolean overwrite, boolean requireText, long initialDelay,
                                          long minDelay, long maxDelay, long frameTimeout,
+                                         int downshiftAfterTimeouts,
                                          Listener listener, TransferMetrics metrics)
             throws IOException, InterruptedException {
         validateOutput(output, overwrite);
@@ -75,6 +80,7 @@ final class AdaptiveReceiver {
         long expectedOffset = 0;
         int expectedPage = 0;
         AdaptiveDelay delay = new AdaptiveDelay(initialDelay, minDelay, maxDelay);
+        int consecutiveTimeouts = 0;
         long requestStarted = System.nanoTime();
         controller.acknowledge(0); // request page 0 from the header
 
@@ -89,13 +95,21 @@ final class AdaptiveReceiver {
                 if (frame == null) {
                     metrics.recognitionFailure();
                     if (elapsed >= frameTimeout) {
-                        controller.reject(expectedPage);
-                        delay.onFailure();
                         metrics.timeout();
-                        metrics.retry();
                         requestStarted = System.nanoTime();
-                        listener.log("页面 " + expectedPage + " 超时，已请求降密重传；等待 "
-                                + delay.current() + "ms");
+                        consecutiveTimeouts++;
+                        if (consecutiveTimeouts >= downshiftAfterTimeouts) {
+                            controller.reject(expectedPage);
+                            delay.onFailure();
+                            metrics.retry();
+                            consecutiveTimeouts = 0;
+                            listener.log("页面 " + expectedPage + " 连续超时 "
+                                    + downshiftAfterTimeouts + " 次，已请求当前页降密重传");
+                        } else {
+                            listener.log("页面 " + expectedPage + " 超时（"
+                                    + consecutiveTimeouts + "/" + downshiftAfterTimeouts
+                                    + "），继续扫描，暂不降密");
+                        }
                     }
                     continue;
                 }
@@ -107,6 +121,7 @@ final class AdaptiveReceiver {
                     if (elapsed >= frameTimeout) {
                         controller.acknowledge(0);
                         delay.onFailure();
+                        consecutiveTimeouts = 0;
                         requestStarted = System.nanoTime();
                         listener.log("仍为文件头，重新请求第 0 页");
                     }
@@ -120,31 +135,24 @@ final class AdaptiveReceiver {
                 if (page == expectedPage - 1) {
                     controller.acknowledge(page);
                     metrics.duplicatePage();
-                    if (elapsed >= frameTimeout) {
-                        controller.reject(expectedPage);
-                        delay.onFailure();
-                        metrics.timeout();
-                        metrics.retry();
-                        requestStarted = System.nanoTime();
-                        listener.log("重复页 " + page + " 持续超时，已重新确认并请求页面 "
-                                + expectedPage + " 降密重传");
-                    } else {
-                        listener.log("重复页 " + page + "，已重新确认");
-                    }
+                    consecutiveTimeouts = 0;
+                    requestStarted = System.nanoTime();
+                    listener.log("重复页 " + page + "，已重新确认，不触发降密");
                     continue;
                 }
                 if (page != expectedPage || frame.getOffset() != expectedOffset) {
-                    controller.reject(expectedPage);
-                    delay.onFailure();
                     metrics.sequenceError();
-                    metrics.retry();
-                    requestStarted = System.nanoTime();
                     listener.log("页序不一致：期待页 " + expectedPage + "、偏移 " + expectedOffset
-                            + "，实际页 " + page + "、偏移 " + frame.getOffset());
+                            + "，实际页 " + page + "、偏移 " + frame.getOffset()
+                            + "；继续扫描且不触发降密");
+                    if (elapsed >= frameTimeout) {
+                        throw new IOException("页序持续不一致，停止接收以避免输出错误文件");
+                    }
                     continue;
                 }
 
                 byte[] payload = frame.getPayload();
+                consecutiveTimeouts = 0;
                 stream.write(payload);
                 written += payload.length;
                 expectedOffset += payload.length;

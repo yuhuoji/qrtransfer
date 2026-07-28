@@ -11,6 +11,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,7 +42,7 @@ class AdaptiveReceiverTest {
         Path output = tempDir.resolve("received.zip");
         RecordingController controller = new RecordingController();
         AdaptiveReceiver.Result result = AdaptiveReceiver.receive(frames::removeFirst, controller, output,
-                false, false, 0, 0, 0, 1000, ignored -> { });
+                false, false, 0, 0, 0, 1000, 3, ignored -> { });
 
         assertArrayEquals(expected, Files.readAllBytes(output));
         assertEquals(2, result.metrics.pages());
@@ -59,12 +60,12 @@ class AdaptiveReceiverTest {
 
         assertThrows(Exception.class, () -> AdaptiveReceiver.receive(
                 frames::removeFirst, new NoopController(), output,
-                false, false, 0, 0, 0, 1000, ignored -> { }));
+                false, false, 0, 0, 0, 1000, 3, ignored -> { }));
         assertFalse(Files.exists(output));
     }
 
     @Test
-    void repeatedPreviousPageEventuallyRequestsExpectedPageRetransmission() throws Exception {
+    void repeatedPreviousPageIsReacknowledgedWithoutDensityReduction() throws Exception {
         byte[] expected = {7, 8};
         Path source = tempDir.resolve("duplicate-source.bin");
         Files.write(source, expected);
@@ -80,9 +81,65 @@ class AdaptiveReceiverTest {
 
         AdaptiveReceiver.receive(frames::removeFirst, controller,
                 tempDir.resolve("duplicate-output.bin"),
-                false, false, 0, 0, 0, 0, ignored -> { });
+                false, false, 0, 0, 0, 0, 3, ignored -> { });
 
-        assertEquals(List.of(1), controller.rejectedPages);
+        assertEquals(List.of(), controller.rejectedPages);
+        assertEquals(List.of(0, 0, 0, 1), controller.acknowledgedPages);
+    }
+
+    @Test
+    void firstTwoTimeoutsDoNotRequestDensityReduction() throws Exception {
+        TimeoutScenario scenario = timeoutScenario(2);
+        RecordingController controller = new RecordingController();
+
+        AdaptiveReceiver.Result result = AdaptiveReceiver.receive(
+                scenario::next, controller, tempDir.resolve("two-timeouts.bin"),
+                false, false, 0, 0, 0, 0, 3, ignored -> { });
+
+        assertEquals(List.of(), controller.rejectedPages);
+        assertEquals(2, result.metrics.timeouts());
+    }
+
+    @Test
+    void thirdTimeoutRequestsOneDensityReduction() throws Exception {
+        TimeoutScenario scenario = timeoutScenario(3);
+        RecordingController controller = new RecordingController();
+
+        AdaptiveReceiver.Result result = AdaptiveReceiver.receive(
+                scenario::next, controller, tempDir.resolve("three-timeouts.bin"),
+                false, false, 0, 0, 0, 0, 3, ignored -> { });
+
+        assertEquals(List.of(0), controller.rejectedPages);
+        assertEquals(3, result.metrics.timeouts());
+        assertEquals(1, result.metrics.retries());
+    }
+
+    private TimeoutScenario timeoutScenario(int timeoutCount) throws Exception {
+        byte[] payload = {42};
+        Path source = tempDir.resolve("timeout-source-" + timeoutCount + ".bin");
+        Files.write(source, payload);
+        long session = 100 + timeoutCount;
+        List<byte[]> frames = new ArrayList<>();
+        frames.add(V2Frame.header(session, payload.length,
+                Md5Util.getFileMD5(source.toFile()), false).encode());
+        for (int i = 0; i < timeoutCount; i++) {
+            frames.add(null);
+        }
+        frames.add(V2Frame.data(session, 0, 0, payload, true).encode());
+        return new TimeoutScenario(frames);
+    }
+
+    private static final class TimeoutScenario {
+        private final List<byte[]> frames;
+        private final AtomicInteger cursor = new AtomicInteger();
+
+        private TimeoutScenario(List<byte[]> frames) {
+            this.frames = frames;
+        }
+
+        private byte[] next() {
+            return frames.get(cursor.getAndIncrement());
+        }
     }
 
     private static final class NoopController implements AdaptiveReceiver.Controller {

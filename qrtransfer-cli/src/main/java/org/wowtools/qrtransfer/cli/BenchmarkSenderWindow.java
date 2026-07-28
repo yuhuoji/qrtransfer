@@ -23,12 +23,15 @@ final class BenchmarkSenderWindow extends JFrame {
         final int minPageSize;
         final int initialPageSize;
         final int maxPageSize;
+        final boolean pageLocalRecovery;
 
-        Config(int qrSize, int minPageSize, int initialPageSize, int maxPageSize) {
+        Config(int qrSize, int minPageSize, int initialPageSize, int maxPageSize,
+               boolean pageLocalRecovery) {
             this.qrSize = qrSize;
             this.minPageSize = minPageSize;
             this.initialPageSize = initialPageSize;
             this.maxPageSize = maxPageSize;
+            this.pageLocalRecovery = pageLocalRecovery;
         }
     }
 
@@ -87,7 +90,8 @@ final class BenchmarkSenderWindow extends JFrame {
                 throw new IllegalArgumentException("二维码尺寸过小，无法容纳最小测速页面 "
                         + config.minPageSize + " 字节");
             }
-            pageSizer = new AdaptivePageSizer(config.minPageSize, initial, calibratedMax, null);
+            pageSizer = new AdaptivePageSizer(
+                    config.minPageSize, initial, calibratedMax, null, config.pageLocalRecovery);
             header = V2Frame.benchmarkHeader(sessionId, config.qrSize, config.minPageSize,
                     initial, calibratedMax);
             SwingUtilities.invokeLater(() -> {

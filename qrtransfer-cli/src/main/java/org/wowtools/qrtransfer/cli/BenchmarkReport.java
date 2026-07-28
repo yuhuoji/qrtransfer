@@ -34,6 +34,7 @@ final class BenchmarkReport {
     private final long recommendedMinDelay;
     private final long recommendedMaxDelay;
     private final long recommendedTimeout;
+    private final int recommendedDownshiftAfterTimeouts;
 
     private BenchmarkReport(TransferMetrics metrics, V2Frame header, List<Sample> samples) {
         this.metrics = metrics;
@@ -55,14 +56,22 @@ final class BenchmarkReport {
                 Math.max(recommendedInitialPageSize, roundDown(upperPage, 128) + 128),
                 recommendedInitialPageSize, header.getMaxPageSize());
 
-        long p50Cycle = percentileLong(stable, 0.50, 200);
         long p95Cycle = percentileLong(stable, 0.95, 500);
-        this.recommendedInitialDelay = clamp(Math.round(p50Cycle * 0.75), 20, 800);
-        this.recommendedMinDelay = Math.max(20, recommendedInitialDelay / 2);
-        this.recommendedMaxDelay = clamp(
-                Math.max(400, recommendedInitialDelay * 4), recommendedInitialDelay, 1200);
         this.recommendedTimeout = clamp(Math.max(900, p95Cycle * 3), 900, 3000);
         this.recommendedProfile = chooseProfile(stablePageSize, stableCycleMillis, retryRate);
+        if ("safe".equals(recommendedProfile)) {
+            long p50Cycle = percentileLong(stable, 0.50, 200);
+            this.recommendedInitialDelay = clamp(Math.round(p50Cycle * 0.75), 20, 800);
+            this.recommendedMinDelay = Math.max(20, recommendedInitialDelay / 2);
+            this.recommendedMaxDelay = clamp(
+                    Math.max(400, recommendedInitialDelay * 4), recommendedInitialDelay, 1200);
+            this.recommendedDownshiftAfterTimeouts = 1;
+        } else {
+            this.recommendedInitialDelay = 0;
+            this.recommendedMinDelay = 0;
+            this.recommendedMaxDelay = 0;
+            this.recommendedDownshiftAfterTimeouts = 3;
+        }
     }
 
     static BenchmarkReport create(TransferMetrics metrics, V2Frame header, List<Sample> samples) {
@@ -120,7 +129,9 @@ final class BenchmarkReport {
         out.append("建议接收参数：--initial-delay ").append(recommendedInitialDelay)
                 .append(" --min-delay ").append(recommendedMinDelay)
                 .append(" --max-delay ").append(recommendedMaxDelay)
-                .append(" --frame-timeout ").append(recommendedTimeout);
+                .append(" --frame-timeout ").append(recommendedTimeout)
+                .append(" --downshift-after-timeouts ")
+                .append(recommendedDownshiftAfterTimeouts);
         return out.toString();
     }
 

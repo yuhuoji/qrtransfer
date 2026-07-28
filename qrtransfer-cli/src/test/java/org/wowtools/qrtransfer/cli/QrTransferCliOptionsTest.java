@@ -28,6 +28,7 @@ class QrTransferCliOptionsTest {
         assertEquals(384, options.minPageSize);
         assertEquals(2000, options.initialPageSize);
         assertEquals(2150, options.maxPageSize);
+        assertTrue(options.pageLocalRecovery);
     }
 
     @Test
@@ -40,6 +41,7 @@ class QrTransferCliOptionsTest {
         assertTrue(options.legacy);
         assertTrue(options.overwrite);
         assertEquals(600, options.legacyPageDelay);
+        assertEquals(3, options.downshiftAfterTimeouts);
     }
 
     @Test
@@ -60,6 +62,7 @@ class QrTransferCliOptionsTest {
         assertEquals(384, send.minPageSize);
         assertEquals(1800, send.initialPageSize);
         assertEquals(2150, send.maxPageSize);
+        assertTrue(send.pageLocalRecovery);
 
         QrTransferCli.BenchmarkReceiveOptions receive =
                 QrTransferCli.BenchmarkReceiveOptions.parse(new String[]{
@@ -67,8 +70,22 @@ class QrTransferCliOptionsTest {
                 });
         assertEquals(240, receive.durationSeconds);
         assertEquals(3, receive.startDelaySeconds);
-        assertEquals(90, receive.initialDelay);
-        assertEquals(30, receive.minDelay);
+        assertEquals(0, receive.initialDelay);
+        assertEquals(0, receive.minDelay);
+        assertEquals(3, receive.downshiftAfterTimeouts);
+    }
+
+    @Test
+    void parsesExplicitDelayAndTimeoutThresholdOverrides() {
+        QrTransferCli.ReceiveOptions receive = QrTransferCli.ReceiveOptions.parse(new String[]{
+                "receive", "--output", tempDir.resolve("custom.bin").toString(),
+                "--profile", "fast", "--initial-delay", "20", "--min-delay", "10",
+                "--max-delay", "100", "--downshift-after-timeouts", "5"
+        });
+        assertEquals(20, receive.initialDelay);
+        assertEquals(10, receive.minDelay);
+        assertEquals(100, receive.maxDelay);
+        assertEquals(5, receive.downshiftAfterTimeouts);
     }
 
     @Test
