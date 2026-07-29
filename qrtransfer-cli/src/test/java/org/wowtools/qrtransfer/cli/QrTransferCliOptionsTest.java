@@ -27,8 +27,9 @@ class QrTransferCliOptionsTest {
         assertEquals(700, options.qrSize);
         assertEquals(384, options.minPageSize);
         assertEquals(2000, options.initialPageSize);
-        assertEquals(2150, options.maxPageSize);
+        assertEquals(2800, options.maxPageSize);
         assertTrue(options.pageLocalRecovery);
+        assertTrue(options.compactEncoding);
     }
 
     @Test
@@ -58,11 +59,12 @@ class QrTransferCliOptionsTest {
     void parsesBenchmarkDefaultsAndOverrides() {
         QrTransferCli.BenchmarkSendOptions send =
                 QrTransferCli.BenchmarkSendOptions.parse(new String[]{"benchmark-send"});
-        assertEquals(640, send.qrSize);
+        assertEquals(768, send.qrSize);
         assertEquals(384, send.minPageSize);
-        assertEquals(1800, send.initialPageSize);
-        assertEquals(2150, send.maxPageSize);
+        assertEquals(2700, send.initialPageSize);
+        assertEquals(2800, send.maxPageSize);
         assertTrue(send.pageLocalRecovery);
+        assertTrue(send.compactEncoding);
 
         QrTransferCli.BenchmarkReceiveOptions receive =
                 QrTransferCli.BenchmarkReceiveOptions.parse(new String[]{

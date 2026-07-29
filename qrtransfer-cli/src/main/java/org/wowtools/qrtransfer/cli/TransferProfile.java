@@ -1,9 +1,9 @@
 package org.wowtools.qrtransfer.cli;
 
 enum TransferProfile {
-    SAFE("safe", 512, 512, 1000, 1600, 300, 200, 1200, 2500, 1, false),
-    BALANCED("balanced", 512, 512, 1600, 2100, 0, 0, 0, 1200, 3, true),
-    FAST("fast", 640, 384, 1800, 2150, 0, 0, 0, 800, 3, true);
+    SAFE("safe", 512, 512, 1000, 1600, 300, 200, 1200, 2500, 1, false, false),
+    BALANCED("balanced", 512, 512, 1600, 2100, 0, 0, 0, 1200, 3, true, false),
+    FAST("fast", 768, 384, 2700, 2800, 0, 0, 0, 800, 3, true, true);
 
     final String cliName;
     final int qrSize;
@@ -16,10 +16,12 @@ enum TransferProfile {
     final long frameTimeout;
     final int downshiftAfterTimeouts;
     final boolean pageLocalRecovery;
+    final boolean compactEncoding;
 
     TransferProfile(String cliName, int qrSize, int minPageSize, int initialPageSize, int maxPageSize,
                     long initialDelay, long minDelay, long maxDelay, long frameTimeout,
-                    int downshiftAfterTimeouts, boolean pageLocalRecovery) {
+                    int downshiftAfterTimeouts, boolean pageLocalRecovery,
+                    boolean compactEncoding) {
         this.cliName = cliName;
         this.qrSize = qrSize;
         this.minPageSize = minPageSize;
@@ -31,6 +33,7 @@ enum TransferProfile {
         this.frameTimeout = frameTimeout;
         this.downshiftAfterTimeouts = downshiftAfterTimeouts;
         this.pageLocalRecovery = pageLocalRecovery;
+        this.compactEncoding = compactEncoding;
     }
 
     static TransferProfile parse(String value) {

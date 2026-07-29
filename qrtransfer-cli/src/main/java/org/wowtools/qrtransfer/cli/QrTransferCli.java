@@ -33,7 +33,7 @@ public final class QrTransferCli {
                     BenchmarkSenderWindow.Config config = new BenchmarkSenderWindow.Config(
                             options.qrSize, options.minPageSize,
                             options.initialPageSize, options.maxPageSize,
-                            options.pageLocalRecovery);
+                            options.pageLocalRecovery, options.compactEncoding);
                     new BenchmarkSenderWindow(config).showWindow();
                 });
                 return;
@@ -53,7 +53,7 @@ public final class QrTransferCli {
                                 options.input, options.text, options.qrSize,
                                 options.minPageSize, options.initialPageSize,
                                 options.maxPageSize, options.fixedPageSize,
-                                options.pageLocalRecovery);
+                                options.pageLocalRecovery, options.compactEncoding);
                         new AdaptiveSenderWindow(config).showWindow();
                     }
                 });
@@ -226,10 +226,12 @@ public final class QrTransferCli {
         final int maxPageSize;
         final Integer fixedPageSize;
         final boolean pageLocalRecovery;
+        final boolean compactEncoding;
 
         private SendOptions(Path input, boolean text, boolean legacy, int qrSize,
-                            int minPageSize, int initialPageSize, int maxPageSize,
-                            Integer fixedPageSize, boolean pageLocalRecovery) {
+                              int minPageSize, int initialPageSize, int maxPageSize,
+                            Integer fixedPageSize, boolean pageLocalRecovery,
+                            boolean compactEncoding) {
             this.input = input;
             this.text = text;
             this.legacy = legacy;
@@ -239,6 +241,7 @@ public final class QrTransferCli {
             this.maxPageSize = maxPageSize;
             this.fixedPageSize = fixedPageSize;
             this.pageLocalRecovery = pageLocalRecovery;
+            this.compactEncoding = compactEncoding;
         }
 
         static SendOptions parse(String[] args) {
@@ -294,7 +297,7 @@ public final class QrTransferCli {
                 throw new IllegalArgumentException("--fixed-page-size 必须位于页面范围内");
             }
             return new SendOptions(input, text, legacy, qrSize, min, initial, max, fixed,
-                    profile.pageLocalRecovery);
+                    profile.pageLocalRecovery, profile.compactEncoding);
         }
     }
 
@@ -405,15 +408,17 @@ public final class QrTransferCli {
         final int initialPageSize;
         final int maxPageSize;
         final boolean pageLocalRecovery;
+        final boolean compactEncoding;
 
         private BenchmarkSendOptions(int qrSize, int minPageSize,
                                      int initialPageSize, int maxPageSize,
-                                     boolean pageLocalRecovery) {
+                                     boolean pageLocalRecovery, boolean compactEncoding) {
             this.qrSize = qrSize;
             this.minPageSize = minPageSize;
             this.initialPageSize = initialPageSize;
             this.maxPageSize = maxPageSize;
             this.pageLocalRecovery = pageLocalRecovery;
+            this.compactEncoding = compactEncoding;
         }
 
         static BenchmarkSendOptions parse(String[] args) {
@@ -448,7 +453,8 @@ public final class QrTransferCli {
                 throw new IllegalArgumentException("测速二维码尺寸或页面大小范围无效");
             }
             return new BenchmarkSendOptions(
-                    qrSize, min, initial, max, profile.pageLocalRecovery);
+                    qrSize, min, initial, max, profile.pageLocalRecovery,
+                    profile.compactEncoding);
         }
     }
 

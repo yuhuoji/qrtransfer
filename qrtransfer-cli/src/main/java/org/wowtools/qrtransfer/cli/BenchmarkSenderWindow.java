@@ -24,14 +24,16 @@ final class BenchmarkSenderWindow extends JFrame {
         final int initialPageSize;
         final int maxPageSize;
         final boolean pageLocalRecovery;
+        final boolean compactEncoding;
 
         Config(int qrSize, int minPageSize, int initialPageSize, int maxPageSize,
-               boolean pageLocalRecovery) {
+               boolean pageLocalRecovery, boolean compactEncoding) {
             this.qrSize = qrSize;
             this.minPageSize = minPageSize;
             this.initialPageSize = initialPageSize;
             this.maxPageSize = maxPageSize;
             this.pageLocalRecovery = pageLocalRecovery;
+            this.compactEncoding = compactEncoding;
         }
     }
 
@@ -101,6 +103,9 @@ final class BenchmarkSenderWindow extends JFrame {
                     ready = true;
                     append("测速二维码已就绪，本机可识别页面范围 "
                             + config.minPageSize + "–" + calibratedMax + " 字节");
+                    if (config.compactEncoding) {
+                        append("测速使用 Fast 紧凑编码，不经过 Base64 扩容");
+                    }
                     append("请保持本窗口激活，然后在接收端启动 benchmark-receive。");
                     append("测速只发送合成数据，不读取真实文件。");
                 } catch (Exception e) {
@@ -271,7 +276,7 @@ final class BenchmarkSenderWindow extends JFrame {
 
     private boolean canReadLocally(byte[] encoded) {
         try {
-            BinaryQRCodeUtil.generate(encoded, testImage);
+            generateQr(encoded, testImage);
             return Arrays.equals(encoded, BinaryQRCodeUtil.parse(testImage));
         } catch (Exception e) {
             return false;
@@ -279,8 +284,16 @@ final class BenchmarkSenderWindow extends JFrame {
     }
 
     private void showFrame(V2Frame frame) throws Exception {
-        BinaryQRCodeUtil.generate(frame.encode(), canvas.image);
+        generateQr(frame.encode(), canvas.image);
         canvas.repaint();
+    }
+
+    private void generateQr(byte[] encoded, BufferedImage image) throws Exception {
+        if (config.compactEncoding) {
+            BinaryQRCodeUtil.generateCompact(encoded, image);
+        } else {
+            BinaryQRCodeUtil.generate(encoded, image);
+        }
     }
 
     private void fail(Exception e) {

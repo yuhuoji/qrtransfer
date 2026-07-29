@@ -1,11 +1,13 @@
 package org.wowtools.qrtransfer.common.util;
 
 import org.junit.jupiter.api.Test;
+import org.wowtools.qrtransfer.common.transfer.V2Frame;
 
 import java.awt.image.BufferedImage;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class BinaryQRCodeUtilTest {
     @Test
@@ -43,5 +45,30 @@ class BinaryQRCodeUtilTest {
                         "随机二进制往返失败，size=" + size + "，sample=" + sample);
             }
         }
+    }
+
+    @Test
+    void compactEncodingRoundTripsDenseArbitraryBytes() throws Exception {
+        Random random = new Random(20260729L);
+        for (int size : new int[]{1, 256, 1600, 2600, 2700, 2750, 2800}) {
+            byte[] input = new byte[size];
+            random.nextBytes(input);
+            BufferedImage image = new BufferedImage(768, 768, BufferedImage.TYPE_INT_RGB);
+            BinaryQRCodeUtil.generateCompact(input, image);
+            assertArrayEquals(input, BinaryQRCodeUtil.parse(image),
+                    "紧凑编码往返失败，size=" + size);
+        }
+    }
+
+    @Test
+    void compactEncodingRoundTripsFastV2Page() throws Exception {
+        byte[] payload = new byte[2800];
+        new Random(20260730L).nextBytes(payload);
+        byte[] frame = V2Frame.data(42L, 7, 19_250L, payload, false).encode();
+        BufferedImage image = new BufferedImage(768, 768, BufferedImage.TYPE_INT_RGB);
+        assertThrows(Exception.class, () -> BinaryQRCodeUtil.generate(frame, image),
+                "2800B V2 页不应再能通过 Base64 编码塞入单个二维码");
+        BinaryQRCodeUtil.generateCompact(frame, image);
+        assertArrayEquals(frame, BinaryQRCodeUtil.parse(image));
     }
 }

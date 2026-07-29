@@ -34,9 +34,11 @@ final class AdaptiveSenderWindow extends JFrame {
         final int maxPageSize;
         final Integer fixedPageSize;
         final boolean pageLocalRecovery;
+        final boolean compactEncoding;
 
         Config(Path input, boolean text, int qrSize, int minPageSize, int initialPageSize,
-               int maxPageSize, Integer fixedPageSize, boolean pageLocalRecovery) {
+               int maxPageSize, Integer fixedPageSize, boolean pageLocalRecovery,
+               boolean compactEncoding) {
             this.input = input;
             this.text = text;
             this.qrSize = qrSize;
@@ -45,6 +47,7 @@ final class AdaptiveSenderWindow extends JFrame {
             this.maxPageSize = maxPageSize;
             this.fixedPageSize = fixedPageSize;
             this.pageLocalRecovery = pageLocalRecovery;
+            this.compactEncoding = compactEncoding;
         }
     }
 
@@ -141,6 +144,9 @@ final class AdaptiveSenderWindow extends JFrame {
                             + " 字节，MD5 " + md5);
                     append("二维码本机可识别上限 " + calibratedMax + " 字节；当前 "
                             + pageSizer.current() + " 字节/页");
+                    if (config.compactEncoding) {
+                        append("Fast 紧凑编码已启用：取消 Base64 膨胀，优先提高单页吞吐");
+                    }
                     append("请保持本窗口激活；接收端将自动确认、升速和降密重传。");
                     updateProgress();
                 } catch (Exception e) {
@@ -307,7 +313,7 @@ final class AdaptiveSenderWindow extends JFrame {
 
     private boolean canReadLocally(byte[] encoded) {
         try {
-            BinaryQRCodeUtil.generate(encoded, testImage);
+            generateQr(encoded, testImage);
             return Arrays.equals(encoded, BinaryQRCodeUtil.parse(testImage));
         } catch (Exception e) {
             return false;
@@ -319,8 +325,16 @@ final class AdaptiveSenderWindow extends JFrame {
     }
 
     private void showFrame(V2Frame frame) throws Exception {
-        BinaryQRCodeUtil.generate(frame.encode(), canvas.image);
+        generateQr(frame.encode(), canvas.image);
         canvas.repaint();
+    }
+
+    private void generateQr(byte[] encoded, BufferedImage image) throws Exception {
+        if (config.compactEncoding) {
+            BinaryQRCodeUtil.generateCompact(encoded, image);
+        } else {
+            BinaryQRCodeUtil.generate(encoded, image);
+        }
     }
 
     private void fail(Exception e) {

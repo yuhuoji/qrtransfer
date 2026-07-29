@@ -17,17 +17,21 @@ class AdaptiveTuningTest {
         assertEquals(3, TransferProfile.BALANCED.downshiftAfterTimeouts);
         assertTrue(TransferProfile.BALANCED.pageLocalRecovery);
 
-        assertEquals(1800, TransferProfile.FAST.initialPageSize);
-        assertEquals(2150, TransferProfile.FAST.maxPageSize);
+        assertEquals(768, TransferProfile.FAST.qrSize);
+        assertEquals(2700, TransferProfile.FAST.initialPageSize);
+        assertEquals(2800, TransferProfile.FAST.maxPageSize);
         assertEquals(0, TransferProfile.FAST.initialDelay);
         assertEquals(0, TransferProfile.FAST.minDelay);
         assertEquals(0, TransferProfile.FAST.maxDelay);
         assertEquals(800, TransferProfile.FAST.frameTimeout);
         assertEquals(3, TransferProfile.FAST.downshiftAfterTimeouts);
         assertTrue(TransferProfile.FAST.pageLocalRecovery);
+        assertTrue(TransferProfile.FAST.compactEncoding);
 
         assertEquals(1, TransferProfile.SAFE.downshiftAfterTimeouts);
         assertTrue(!TransferProfile.SAFE.pageLocalRecovery);
+        assertTrue(!TransferProfile.SAFE.compactEncoding);
+        assertTrue(!TransferProfile.BALANCED.compactEncoding);
     }
 
     @Test
