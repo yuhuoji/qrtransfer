@@ -3,6 +3,9 @@ package org.wowtools.qrtransfer.common.util;
 import org.junit.jupiter.api.Test;
 import org.wowtools.qrtransfer.common.transfer.V2Frame;
 
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.Random;
 
@@ -80,5 +83,24 @@ class BinaryQRCodeUtilTest {
         BinaryQRCodeUtil.generateRobust(frame, image);
 
         assertArrayEquals(frame, BinaryQRCodeUtil.parse(image));
+    }
+
+    @Test
+    void highContrastRemovesLightRemoteDesktopWatermark() throws Exception {
+        byte[] frame = V2Frame.resumeReady(123456789L).encode();
+        BufferedImage image = new BufferedImage(768, 768, BufferedImage.TYPE_INT_RGB);
+        BinaryQRCodeUtil.generateRobust(frame, image);
+
+        Graphics2D graphics = image.createGraphics();
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON);
+        graphics.setColor(new Color(64, 64, 64, 64));
+        for (int position = -300; position < 900; position += 55) {
+            graphics.drawLine(position, 0, position + 700, 768);
+        }
+        graphics.dispose();
+
+        assertArrayEquals(frame,
+                BinaryQRCodeUtil.parse(BinaryQRCodeUtil.highContrast(image)));
     }
 }

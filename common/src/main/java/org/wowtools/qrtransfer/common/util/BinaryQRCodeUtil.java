@@ -23,6 +23,7 @@ import java.util.Map;
  * and the compact single-byte representation used by the speed-first profile.
  */
 public final class BinaryQRCodeUtil {
+    private static final int WATERMARK_THRESHOLD = 128;
     private static final String PREFIX = "QRT2:";
     private static final String COMPACT_PREFIX = "QRT2R:";
     private static final byte[] COMPACT_PREFIX_BYTES =
@@ -92,7 +93,13 @@ public final class BinaryQRCodeUtil {
             try {
                 result = decode(image, DECODE_HINTS);
             } catch (Exception first) {
-                result = decode(image, HARD_DECODE_HINTS);
+                try {
+                    result = decode(image, HARD_DECODE_HINTS);
+                } catch (Exception second) {
+                    // Remote-desktop watermarks are often light gray. Hybrid binarization can
+                    // turn those strokes into QR modules, so retry with only dark pixels kept.
+                    result = decode(highContrast(image), HARD_DECODE_HINTS);
+                }
             }
             String text = result.getText();
             if (text.startsWith(PREFIX)) {
@@ -117,6 +124,23 @@ public final class BinaryQRCodeUtil {
         BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(
                 new BufferedImageLuminanceSource(image)));
         return new MultiFormatReader().decode(bitmap, hints);
+    }
+
+    static BufferedImage highContrast(BufferedImage source) {
+        BufferedImage output = new BufferedImage(
+                source.getWidth(), source.getHeight(), BufferedImage.TYPE_BYTE_BINARY);
+        for (int y = 0; y < source.getHeight(); y++) {
+            for (int x = 0; x < source.getWidth(); x++) {
+                int rgb = source.getRGB(x, y);
+                int red = (rgb >>> 16) & 0xff;
+                int green = (rgb >>> 8) & 0xff;
+                int blue = rgb & 0xff;
+                int luminance = (299 * red + 587 * green + 114 * blue) / 1000;
+                output.setRGB(x, y,
+                        luminance < WATERMARK_THRESHOLD ? 0xff000000 : 0xffffffff);
+            }
+        }
+        return output;
     }
 
     private static boolean startsWith(byte[] value, byte[] prefix) {
