@@ -37,9 +37,18 @@ public final class BinaryQRCodeUtil {
             EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.L,
             EncodeHintType.MARGIN, 2
     );
+    private static final Map<EncodeHintType, Object> ROBUST_ENCODE_HINTS = Map.of(
+            EncodeHintType.CHARACTER_SET, "UTF-8",
+            EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.H,
+            EncodeHintType.MARGIN, 4
+    );
     private static final Map<DecodeHintType, Object> DECODE_HINTS = Map.of(
             DecodeHintType.CHARACTER_SET, "UTF-8",
             DecodeHintType.TRY_HARDER, false
+    );
+    private static final Map<DecodeHintType, Object> HARD_DECODE_HINTS = Map.of(
+            DecodeHintType.CHARACTER_SET, "UTF-8",
+            DecodeHintType.TRY_HARDER, true
     );
 
     private BinaryQRCodeUtil() {
@@ -48,6 +57,12 @@ public final class BinaryQRCodeUtil {
     public static void generate(byte[] bytes, BufferedImage image) throws Exception {
         String content = PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         generateContent(content, image, ENCODE_HINTS);
+    }
+
+    /** Generates a low-capacity control QR with stronger correction and a wider quiet zone. */
+    public static void generateRobust(byte[] bytes, BufferedImage image) throws Exception {
+        String content = PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        generateContent(content, image, ROBUST_ENCODE_HINTS);
     }
 
     /**
@@ -73,9 +88,12 @@ public final class BinaryQRCodeUtil {
 
     public static byte[] parse(BufferedImage image) {
         try {
-            BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(
-                    new BufferedImageLuminanceSource(image)));
-            Result result = new MultiFormatReader().decode(bitmap, DECODE_HINTS);
+            Result result;
+            try {
+                result = decode(image, DECODE_HINTS);
+            } catch (Exception first) {
+                result = decode(image, HARD_DECODE_HINTS);
+            }
             String text = result.getText();
             if (text.startsWith(PREFIX)) {
                 return Base64.getUrlDecoder().decode(text.substring(PREFIX.length()));
@@ -92,6 +110,13 @@ public final class BinaryQRCodeUtil {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static Result decode(BufferedImage image, Map<DecodeHintType, Object> hints)
+            throws Exception {
+        BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(
+                new BufferedImageLuminanceSource(image)));
+        return new MultiFormatReader().decode(bitmap, hints);
     }
 
     private static boolean startsWith(byte[] value, byte[] prefix) {

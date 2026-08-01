@@ -284,7 +284,11 @@ final class BenchmarkSenderWindow extends JFrame {
     }
 
     private void showFrame(V2Frame frame) throws Exception {
-        generateQr(frame.encode(), canvas.image);
+        if (frame.isBenchmarkHeader()) {
+            BinaryQRCodeUtil.generateRobust(frame.encode(), canvas.image);
+        } else {
+            generateQr(frame.encode(), canvas.image);
+        }
         canvas.repaint();
     }
 

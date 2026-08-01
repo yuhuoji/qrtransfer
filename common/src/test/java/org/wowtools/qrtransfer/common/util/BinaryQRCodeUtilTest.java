@@ -71,4 +71,14 @@ class BinaryQRCodeUtilTest {
         BinaryQRCodeUtil.generateCompact(frame, image);
         assertArrayEquals(frame, BinaryQRCodeUtil.parse(image));
     }
+
+    @Test
+    void robustEncodingRoundTripsControlFrame() throws Exception {
+        byte[] frame = V2Frame.resumeReady(123456789L).encode();
+        BufferedImage image = new BufferedImage(768, 768, BufferedImage.TYPE_INT_RGB);
+
+        BinaryQRCodeUtil.generateRobust(frame, image);
+
+        assertArrayEquals(frame, BinaryQRCodeUtil.parse(image));
+    }
 }

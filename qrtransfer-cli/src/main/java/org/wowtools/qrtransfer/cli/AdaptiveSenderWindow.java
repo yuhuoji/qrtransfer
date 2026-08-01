@@ -76,7 +76,7 @@ final class AdaptiveSenderWindow extends JFrame {
     private boolean completed;
     private boolean resumeReadyVisible;
     private boolean resumeConfirmVisible;
-    private final StringBuilder resumeCheckpointDigits = new StringBuilder();
+    private final ResumeKeyInput resumeCheckpointInput = new ResumeKeyInput();
     private long resumeOffset;
     private long sourceLastModified;
 
@@ -184,13 +184,12 @@ final class AdaptiveSenderWindow extends JFrame {
                 return true;
             }
             if (key == '5') {
-                resumeCheckpointDigits.setLength(0);
+                resumeCheckpointInput.arm();
                 append("已清空恢复检查点编号，等待重新输入");
                 return true;
             }
-            if (key >= '0' && key <= '9' && resumeCheckpointDigits.length() < 12) {
-                resumeCheckpointDigits.append(key);
-                append("恢复检查点编号输入中：" + resumeCheckpointDigits);
+            if (resumeCheckpointInput.append(key)) {
+                append("恢复检查点编号输入中：" + resumeCheckpointInput.value());
                 return true;
             }
             return false;
@@ -254,7 +253,7 @@ final class AdaptiveSenderWindow extends JFrame {
 
     private synchronized void enterResumeReady() {
         try {
-            resumeCheckpointDigits.setLength(0);
+            resumeCheckpointInput.reset();
             resumeReadyVisible = true;
             resumeConfirmVisible = false;
             headerVisible = false;
@@ -267,15 +266,15 @@ final class AdaptiveSenderWindow extends JFrame {
 
     private synchronized void confirmResumeCheckpoint() {
         try {
-            if (resumeCheckpointDigits.length() == 0) {
+            if (resumeCheckpointInput.isEmpty()) {
                 append("恢复检查点编号为空，继续等待");
                 return;
             }
-            long checkpoint = Long.parseLong(resumeCheckpointDigits.toString());
+            long checkpoint = Long.parseLong(resumeCheckpointInput.value());
             long offset = Math.multiplyExact(checkpoint, ResumeCheckpoint.DEFAULT_BLOCK_SIZE);
             if (offset < 0 || offset > fileSize) {
                 append("恢复检查点越界：" + checkpoint);
-                resumeCheckpointDigits.setLength(0);
+                resumeCheckpointInput.reset();
                 return;
             }
             verifySourceUnchanged();
@@ -338,7 +337,7 @@ final class AdaptiveSenderWindow extends JFrame {
             completed = false;
             resumeReadyVisible = false;
             resumeConfirmVisible = false;
-            resumeCheckpointDigits.setLength(0);
+            resumeCheckpointInput.reset();
             metrics.reset();
             showFrame(header);
             headerVisible = true;
@@ -429,6 +428,8 @@ final class AdaptiveSenderWindow extends JFrame {
         byte[] encoded = frame.encode();
         if (config.compactEncoding && frame.isData()) {
             BinaryQRCodeUtil.generateCompact(encoded, canvas.image);
+        } else if (!frame.isData()) {
+            BinaryQRCodeUtil.generateRobust(encoded, canvas.image);
         } else {
             BinaryQRCodeUtil.generate(encoded, canvas.image);
         }
@@ -492,6 +493,37 @@ final class AdaptiveSenderWindow extends JFrame {
         @Override
         public void paint(Graphics graphics) {
             graphics.drawImage(image, 10, 10, this);
+        }
+    }
+
+    static final class ResumeKeyInput {
+        private final StringBuilder digits = new StringBuilder();
+        private boolean armed;
+
+        void arm() {
+            digits.setLength(0);
+            armed = true;
+        }
+
+        void reset() {
+            digits.setLength(0);
+            armed = false;
+        }
+
+        boolean append(char key) {
+            if (!armed || key < '0' || key > '9' || digits.length() >= 12) {
+                return false;
+            }
+            digits.append(key);
+            return true;
+        }
+
+        boolean isEmpty() {
+            return digits.length() == 0;
+        }
+
+        String value() {
+            return digits.toString();
         }
     }
 }
