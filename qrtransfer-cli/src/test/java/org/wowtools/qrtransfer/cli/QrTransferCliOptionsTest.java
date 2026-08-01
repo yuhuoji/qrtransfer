@@ -101,4 +101,26 @@ class QrTransferCliOptionsTest {
                         "benchmark-send", "--unknown"
                 }));
     }
+
+    @Test
+    void parsesResumeAndRestartAndRejectsLegacyCombination() throws Exception {
+        Path input = tempDir.resolve("resume.zip");
+        Files.write(input, new byte[]{1});
+        QrTransferCli.SendOptions send = QrTransferCli.SendOptions.parse(new String[]{
+                "send", "--input", input.toString(), "--profile", "fast", "--resume"
+        });
+        assertTrue(send.resume);
+
+        QrTransferCli.ReceiveOptions receive = QrTransferCli.ReceiveOptions.parse(new String[]{
+                "receive", "--output", tempDir.resolve("resume.out").toString(),
+                "--resume", "--restart"
+        });
+        assertTrue(receive.resume);
+        assertTrue(receive.restart);
+
+        assertThrows(IllegalArgumentException.class, () -> QrTransferCli.SendOptions.parse(
+                new String[]{"send", "--input", input.toString(), "--legacy", "--resume"}));
+        assertThrows(IllegalArgumentException.class, () -> QrTransferCli.ReceiveOptions.parse(
+                new String[]{"receive", "--output", "out", "--restart"}));
+    }
 }

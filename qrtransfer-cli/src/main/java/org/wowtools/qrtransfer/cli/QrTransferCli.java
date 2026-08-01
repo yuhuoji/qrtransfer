@@ -53,7 +53,8 @@ public final class QrTransferCli {
                                 options.input, options.text, options.qrSize,
                                 options.minPageSize, options.initialPageSize,
                                 options.maxPageSize, options.fixedPageSize,
-                                options.pageLocalRecovery, options.compactEncoding);
+                                options.pageLocalRecovery, options.compactEncoding,
+                                options.resume);
                         new AdaptiveSenderWindow(config).showWindow();
                     }
                 });
@@ -121,6 +122,33 @@ public final class QrTransferCli {
                     public void reject(int pageNumber) {
                         press(robot, pageNumber % 2 == 0 ? '3' : '4');
                     }
+
+                    @Override
+                    public void beginResume() {
+                        press(robot, '6');
+                    }
+
+                    @Override
+                    public void submitCheckpoint(long checkpointNumber) {
+                        String value = Long.toString(checkpointNumber);
+                        press(robot, '5');
+                        robot.delay(120);
+                        for (int i = 0; i < value.length(); i++) {
+                            press(robot, value.charAt(i));
+                            robot.delay(120);
+                        }
+                        pressKey(robot, KeyEvent.VK_ENTER);
+                    }
+
+                    @Override
+                    public void acceptResume() {
+                        press(robot, '7');
+                    }
+
+                    @Override
+                    public void rejectResume() {
+                        press(robot, '8');
+                    }
                 },
                 options.output,
                 options.overwrite,
@@ -130,10 +158,17 @@ public final class QrTransferCli {
                 options.maxDelay,
                 options.frameTimeout,
                 options.downshiftAfterTimeouts,
+                options.resume,
+                options.restart,
                 System.out::println);
         System.out.println("完成：已写入 " + options.output + "（" + result.bytesWritten
                 + " 字节，MD5 " + result.md5 + "）");
         System.out.println(result.metrics.successSummary());
+        if (options.resume) {
+            System.out.println("续传统计：复用 " + result.reusedBytes + " 字节，回退重传 "
+                    + result.rolledBackBytes + " 字节，本次新传 "
+                    + (result.bytesWritten - result.reusedBytes) + " 字节");
+        }
     }
 
     private static void benchmarkReceive(BenchmarkReceiveOptions options) throws Exception {
@@ -181,6 +216,10 @@ public final class QrTransferCli {
 
     private static void press(Robot robot, char value) {
         int key = KeyEvent.getExtendedKeyCodeForChar(value);
+        pressKey(robot, key);
+    }
+
+    private static void pressKey(Robot robot, int key) {
         robot.keyPress(key);
         robot.keyRelease(key);
     }
@@ -200,12 +239,13 @@ public final class QrTransferCli {
         System.err.println("发送: java -jar qrtransfer-cli-1.0-SNAPSHOT.jar send --input <文件>"
                 + " [--text] [--legacy] [--profile safe|balanced|fast]"
                 + " [--qr-size N] [--min-page-size N] [--initial-page-size N]"
-                + " [--max-page-size N] [--fixed-page-size N]");
+                + " [--max-page-size N] [--fixed-page-size N] [--resume]");
         System.err.println("接收: java -jar qrtransfer-cli-1.0-SNAPSHOT.jar receive --output <文件>"
                 + " [--text] [--legacy] [--overwrite] [--profile safe|balanced|fast]"
                 + " [--start-delay 秒] [--initial-delay ms] [--min-delay ms]"
                 + " [--max-delay ms] [--frame-timeout ms]"
-                + " [--downshift-after-timeouts N] [--page-delay ms]");
+                + " [--downshift-after-timeouts N] [--page-delay ms]"
+                + " [--resume] [--restart]");
         System.err.println("测速发送: java -jar qrtransfer-cli-1.0-SNAPSHOT.jar benchmark-send"
                 + " [--profile safe|balanced|fast] [--qr-size N]"
                 + " [--min-page-size N] [--initial-page-size N] [--max-page-size N]");
@@ -227,11 +267,12 @@ public final class QrTransferCli {
         final Integer fixedPageSize;
         final boolean pageLocalRecovery;
         final boolean compactEncoding;
+        final boolean resume;
 
         private SendOptions(Path input, boolean text, boolean legacy, int qrSize,
                               int minPageSize, int initialPageSize, int maxPageSize,
                             Integer fixedPageSize, boolean pageLocalRecovery,
-                            boolean compactEncoding) {
+                            boolean compactEncoding, boolean resume) {
             this.input = input;
             this.text = text;
             this.legacy = legacy;
@@ -242,6 +283,7 @@ public final class QrTransferCli {
             this.fixedPageSize = fixedPageSize;
             this.pageLocalRecovery = pageLocalRecovery;
             this.compactEncoding = compactEncoding;
+            this.resume = resume;
         }
 
         static SendOptions parse(String[] args) {
@@ -254,6 +296,7 @@ public final class QrTransferCli {
             int initial = profile.initialPageSize;
             int max = profile.maxPageSize;
             Integer fixed = null;
+            boolean resume = false;
             for (int i = 1; i < args.length; i++) {
                 switch (args[i]) {
                     case "--input":
@@ -264,6 +307,9 @@ public final class QrTransferCli {
                         break;
                     case "--legacy":
                         legacy = true;
+                        break;
+                    case "--resume":
+                        resume = true;
                         break;
                     case "--profile":
                         i++;
@@ -296,8 +342,11 @@ public final class QrTransferCli {
             if (fixed != null && (fixed < min || fixed > max)) {
                 throw new IllegalArgumentException("--fixed-page-size 必须位于页面范围内");
             }
+            if (legacy && resume) {
+                throw new IllegalArgumentException("--resume 仅支持 adaptive V2，不能与 --legacy 同用");
+            }
             return new SendOptions(input, text, legacy, qrSize, min, initial, max, fixed,
-                    profile.pageLocalRecovery, profile.compactEncoding);
+                    profile.pageLocalRecovery, profile.compactEncoding, resume);
         }
     }
 
@@ -313,11 +362,13 @@ public final class QrTransferCli {
         final long frameTimeout;
         final long legacyPageDelay;
         final int downshiftAfterTimeouts;
+        final boolean resume;
+        final boolean restart;
 
         private ReceiveOptions(Path output, boolean text, boolean legacy, boolean overwrite,
                                long startDelaySeconds, long initialDelay, long minDelay,
                                long maxDelay, long frameTimeout, long legacyPageDelay,
-                               int downshiftAfterTimeouts) {
+                               int downshiftAfterTimeouts, boolean resume, boolean restart) {
             this.output = output;
             this.text = text;
             this.legacy = legacy;
@@ -329,6 +380,8 @@ public final class QrTransferCli {
             this.frameTimeout = frameTimeout;
             this.legacyPageDelay = legacyPageDelay;
             this.downshiftAfterTimeouts = downshiftAfterTimeouts;
+            this.resume = resume;
+            this.restart = restart;
         }
 
         static ReceiveOptions parse(String[] args) {
@@ -337,6 +390,8 @@ public final class QrTransferCli {
             boolean text = false;
             boolean legacy = false;
             boolean overwrite = false;
+            boolean resume = false;
+            boolean restart = false;
             long startDelay = 5;
             long initialDelay = profile.initialDelay;
             long minDelay = profile.minDelay;
@@ -357,6 +412,12 @@ public final class QrTransferCli {
                         break;
                     case "--overwrite":
                         overwrite = true;
+                        break;
+                    case "--resume":
+                        resume = true;
+                        break;
+                    case "--restart":
+                        restart = true;
                         break;
                     case "--profile":
                         i++;
@@ -396,9 +457,15 @@ public final class QrTransferCli {
                     || timeout <= 0 || legacyPageDelay < 0 || downshiftAfterTimeouts < 1) {
                 throw new IllegalArgumentException("等待时间参数无效");
             }
+            if (restart && !resume) {
+                throw new IllegalArgumentException("--restart 必须与 --resume 一起使用");
+            }
+            if (legacy && resume) {
+                throw new IllegalArgumentException("--resume 仅支持 adaptive V2，不能与 --legacy 同用");
+            }
             return new ReceiveOptions(output, text, legacy, overwrite, startDelay,
                     initialDelay, minDelay, maxDelay, timeout, legacyPageDelay,
-                    downshiftAfterTimeouts);
+                    downshiftAfterTimeouts, resume, restart);
         }
     }
 

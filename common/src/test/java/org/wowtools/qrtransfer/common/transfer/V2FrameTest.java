@@ -57,4 +57,17 @@ class V2FrameTest {
         assertThrows(IllegalArgumentException.class,
                 () -> V2Frame.benchmarkHeader(1L, 640, 1000, 900, 2100));
     }
+
+    @Test
+    void roundTripsResumeControlFrames() {
+        V2Frame ready = V2Frame.decode(V2Frame.resumeReady(123L).encode());
+        assertTrue(ready.isResumeReady());
+        assertEquals(123L, ready.getSessionId());
+
+        V2Frame confirm = V2Frame.decode(V2Frame.resumeConfirm(123L, 1048576L,
+                "0123456789abcdef0123456789abcdef").encode());
+        assertTrue(confirm.isResumeConfirm());
+        assertEquals(1048576L, confirm.getOffset());
+        assertEquals("0123456789abcdef0123456789abcdef", confirm.getMd5Hex());
+    }
 }

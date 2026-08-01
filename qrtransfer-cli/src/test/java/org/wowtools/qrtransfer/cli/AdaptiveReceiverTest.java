@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AdaptiveReceiverTest {
     @TempDir
@@ -114,6 +115,68 @@ class AdaptiveReceiverTest {
         assertEquals(1, result.metrics.retries());
     }
 
+    @Test
+    void resumesFromLastVerifiedOneMiBCheckpoint() throws Exception {
+        int checkpointSize = (int) ResumeCheckpoint.DEFAULT_BLOCK_SIZE;
+        byte[] expected = new byte[checkpointSize + 321];
+        for (int i = 0; i < expected.length; i++) {
+            expected[i] = (byte) (i * 17);
+        }
+        Path source = tempDir.resolve("resume-source.bin");
+        Files.write(source, expected);
+        long session = 700L;
+        V2Frame header = V2Frame.header(session, expected.length,
+                Md5Util.getFileMD5(source.toFile()), false);
+        Path output = tempDir.resolve("resume-output.bin");
+        ResumeCheckpoint checkpoint = ResumeCheckpoint.prepare(output, header, false);
+        Files.write(checkpoint.part, Arrays.copyOf(expected, checkpointSize));
+        checkpoint.commitAvailable(header, checkpointSize);
+        String prefixMd5 = ResumeCheckpoint.md5(checkpoint.part, 0, checkpointSize);
+
+        ArrayDeque<byte[]> frames = new ArrayDeque<>();
+        frames.add(header.encode());
+        frames.add(V2Frame.resumeReady(session).encode());
+        frames.add(V2Frame.resumeConfirm(session, checkpointSize, prefixMd5).encode());
+        frames.add(V2Frame.data(session, 0, checkpointSize,
+                Arrays.copyOfRange(expected, checkpointSize, expected.length), true).encode());
+        ResumeRecordingController controller = new ResumeRecordingController();
+
+        AdaptiveReceiver.Result result = AdaptiveReceiver.receive(frames::removeFirst,
+                controller, output, false, false, 0, 0, 0, 1000, 3,
+                true, false, ignored -> { });
+
+        assertArrayEquals(expected, Files.readAllBytes(output));
+        assertEquals(checkpointSize, result.reusedBytes);
+        assertEquals(1, controller.checkpointNumber);
+        assertTrue(controller.resumeAccepted);
+        assertFalse(Files.exists(Path.of(output.toString() + ".part.meta")));
+    }
+
+    @Test
+    void resumableFailurePreservesCommittedCheckpoint() throws Exception {
+        byte[] payload = new byte[(int) ResumeCheckpoint.DEFAULT_BLOCK_SIZE + 1];
+        Arrays.fill(payload, (byte) 9);
+        long session = 701L;
+        V2Frame header = V2Frame.header(session, payload.length,
+                "00000000000000000000000000000000", false);
+        ArrayDeque<byte[]> frames = new ArrayDeque<>();
+        frames.add(header.encode());
+        frames.add(V2Frame.data(session, 0, 0, payload, true).encode());
+        Path output = tempDir.resolve("interrupted-output.bin");
+
+        assertThrows(Exception.class, () -> AdaptiveReceiver.receive(frames::removeFirst,
+                new NoopController(), output, false, false, 0, 0, 0, 1000, 3,
+                true, false, ignored -> { }));
+
+        Path part = Path.of(output.toString() + ".part");
+        Path meta = Path.of(output.toString() + ".part.meta");
+        assertTrue(Files.exists(part));
+        assertTrue(Files.exists(meta));
+        ResumeCheckpoint restored = ResumeCheckpoint.prepare(output, header, false);
+        assertEquals(ResumeCheckpoint.DEFAULT_BLOCK_SIZE, restored.committedOffset);
+        assertEquals(1, restored.rolledBackBytes);
+    }
+
     private TimeoutScenario timeoutScenario(int timeoutCount) throws Exception {
         byte[] payload = {42};
         Path source = tempDir.resolve("timeout-source-" + timeoutCount + ".bin");
@@ -152,7 +215,7 @@ class AdaptiveReceiverTest {
         }
     }
 
-    private static final class RecordingController implements AdaptiveReceiver.Controller {
+    private static class RecordingController implements AdaptiveReceiver.Controller {
         private final List<Integer> acknowledgedPages = new ArrayList<>();
         private final List<Integer> rejectedPages = new ArrayList<>();
 
@@ -164,6 +227,29 @@ class AdaptiveReceiverTest {
         @Override
         public void reject(int pageNumber) {
             rejectedPages.add(pageNumber);
+        }
+    }
+
+    private static final class ResumeRecordingController extends RecordingController {
+        private long checkpointNumber = -1;
+        private boolean resumeAccepted;
+
+        @Override
+        public void submitCheckpoint(long checkpointNumber) {
+            this.checkpointNumber = checkpointNumber;
+        }
+
+        @Override
+        public void beginResume() {
+        }
+
+        @Override
+        public void acceptResume() {
+            resumeAccepted = true;
+        }
+
+        @Override
+        public void rejectResume() {
         }
     }
 }

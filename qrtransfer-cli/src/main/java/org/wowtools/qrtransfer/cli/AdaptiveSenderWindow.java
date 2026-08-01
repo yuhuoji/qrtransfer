@@ -35,10 +35,11 @@ final class AdaptiveSenderWindow extends JFrame {
         final Integer fixedPageSize;
         final boolean pageLocalRecovery;
         final boolean compactEncoding;
+        final boolean resume;
 
         Config(Path input, boolean text, int qrSize, int minPageSize, int initialPageSize,
                int maxPageSize, Integer fixedPageSize, boolean pageLocalRecovery,
-               boolean compactEncoding) {
+               boolean compactEncoding, boolean resume) {
             this.input = input;
             this.text = text;
             this.qrSize = qrSize;
@@ -48,6 +49,7 @@ final class AdaptiveSenderWindow extends JFrame {
             this.fixedPageSize = fixedPageSize;
             this.pageLocalRecovery = pageLocalRecovery;
             this.compactEncoding = compactEncoding;
+            this.resume = resume;
         }
     }
 
@@ -72,6 +74,11 @@ final class AdaptiveSenderWindow extends JFrame {
     private boolean headerVisible;
     private boolean ready;
     private boolean completed;
+    private boolean resumeReadyVisible;
+    private boolean resumeConfirmVisible;
+    private final StringBuilder resumeCheckpointDigits = new StringBuilder();
+    private long resumeOffset;
+    private long sourceLastModified;
 
     AdaptiveSenderWindow(Config config) {
         super("qrtransfer send（adaptive V2）");
@@ -120,6 +127,7 @@ final class AdaptiveSenderWindow extends JFrame {
                 Utf8Text.validate(config.input);
             }
             fileSize = java.nio.file.Files.size(config.input);
+            sourceLastModified = java.nio.file.Files.getLastModifiedTime(config.input).toMillis();
             md5 = Md5Util.getFileMD5(config.input.toFile());
             input = new RandomAccessFile(config.input.toFile(), "r");
             header = V2Frame.header(sessionId, fileSize, md5, config.text);
@@ -148,6 +156,9 @@ final class AdaptiveSenderWindow extends JFrame {
                         append("Fast 紧凑编码已启用：取消 Base64 膨胀，优先提高单页吞吐");
                     }
                     append("请保持本窗口激活；接收端将自动确认、升速和降密重传。");
+                    if (config.resume) {
+                        append("断点续传已启用；接收端可协商最近的 1 MiB 检查点。");
+                    }
                     updateProgress();
                 } catch (Exception e) {
                     fail(e);
@@ -163,13 +174,49 @@ final class AdaptiveSenderWindow extends JFrame {
             return false;
         }
         char key = event.getKeyChar();
+        if (resumeReadyVisible) {
+            if (event.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                resetToHeader();
+                return true;
+            }
+            if (event.getKeyCode() == KeyEvent.VK_ENTER) {
+                confirmResumeCheckpoint();
+                return true;
+            }
+            if (key == '5') {
+                resumeCheckpointDigits.setLength(0);
+                append("已清空恢复检查点编号，等待重新输入");
+                return true;
+            }
+            if (key >= '0' && key <= '9' && resumeCheckpointDigits.length() < 12) {
+                resumeCheckpointDigits.append(key);
+                append("恢复检查点编号输入中：" + resumeCheckpointDigits);
+                return true;
+            }
+            return false;
+        }
+        if (resumeConfirmVisible) {
+            if (key == '7') {
+                startAt(resumeOffset);
+                return true;
+            }
+            if (key == '8' || event.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                enterResumeReady();
+                return true;
+            }
+            return false;
+        }
         if (key == '0') {
             resetToHeader();
             return true;
         }
         if (headerVisible) {
             if (key == '1') {
-                showFirstPage();
+                startAt(0);
+                return true;
+            }
+            if (key == '6' && config.resume) {
+                enterResumeReady();
                 return true;
             }
             return false;
@@ -190,16 +237,58 @@ final class AdaptiveSenderWindow extends JFrame {
         return false;
     }
 
-    private synchronized void showFirstPage() {
-        if (!headerVisible) {
+    private synchronized void startAt(long offset) {
+        if (!headerVisible && !resumeConfirmVisible) {
             return;
         }
         metrics.start();
         updateProgress();
         headerVisible = false;
-        currentOffset = 0;
+        resumeReadyVisible = false;
+        resumeConfirmVisible = false;
+        currentOffset = offset;
         currentPageNumber = 0;
+        append(offset == 0 ? "从头开始传输" : "从断点偏移 " + offset + " 继续传输");
         showCurrentPage();
+    }
+
+    private synchronized void enterResumeReady() {
+        try {
+            resumeCheckpointDigits.setLength(0);
+            resumeReadyVisible = true;
+            resumeConfirmVisible = false;
+            headerVisible = false;
+            showFrame(V2Frame.resumeReady(sessionId));
+            append("已进入恢复协商，等待接收端发送检查点编号");
+        } catch (Exception e) {
+            fail(e);
+        }
+    }
+
+    private synchronized void confirmResumeCheckpoint() {
+        try {
+            if (resumeCheckpointDigits.length() == 0) {
+                append("恢复检查点编号为空，继续等待");
+                return;
+            }
+            long checkpoint = Long.parseLong(resumeCheckpointDigits.toString());
+            long offset = Math.multiplyExact(checkpoint, ResumeCheckpoint.DEFAULT_BLOCK_SIZE);
+            if (offset < 0 || offset > fileSize) {
+                append("恢复检查点越界：" + checkpoint);
+                resumeCheckpointDigits.setLength(0);
+                return;
+            }
+            verifySourceUnchanged();
+            String prefixMd5 = ResumeCheckpoint.md5(config.input, 0, offset);
+            resumeOffset = offset;
+            resumeReadyVisible = false;
+            resumeConfirmVisible = true;
+            showFrame(V2Frame.resumeConfirm(sessionId, offset, prefixMd5));
+            append("恢复确认：检查点 " + checkpoint + "，偏移 " + offset
+                    + "，前缀 MD5 " + prefixMd5);
+        } catch (Exception e) {
+            fail(e);
+        }
     }
 
     private synchronized void acknowledgeCurrent() {
@@ -247,6 +336,9 @@ final class AdaptiveSenderWindow extends JFrame {
             currentOffset = 0;
             currentPageNumber = 0;
             completed = false;
+            resumeReadyVisible = false;
+            resumeConfirmVisible = false;
+            resumeCheckpointDigits.setLength(0);
             metrics.reset();
             showFrame(header);
             headerVisible = true;
@@ -259,6 +351,7 @@ final class AdaptiveSenderWindow extends JFrame {
 
     private void showCurrentPage() {
         try {
+            verifySourceUnchanged();
             while (true) {
                 long remaining = fileSize - currentOffset;
                 int size = (int) Math.min(pageSizer.current(), Math.max(0, remaining));
@@ -287,6 +380,14 @@ final class AdaptiveSenderWindow extends JFrame {
             }
         } catch (Exception e) {
             fail(e);
+        }
+    }
+
+    private void verifySourceUnchanged() throws IOException {
+        if (java.nio.file.Files.size(config.input) != fileSize
+                || java.nio.file.Files.getLastModifiedTime(config.input).toMillis()
+                != sourceLastModified) {
+            throw new IOException("源文件在准备或传输期间发生变化，已停止发送");
         }
     }
 
@@ -325,7 +426,12 @@ final class AdaptiveSenderWindow extends JFrame {
     }
 
     private void showFrame(V2Frame frame) throws Exception {
-        generateQr(frame.encode(), canvas.image);
+        byte[] encoded = frame.encode();
+        if (config.compactEncoding && frame.isData()) {
+            BinaryQRCodeUtil.generateCompact(encoded, canvas.image);
+        } else {
+            BinaryQRCodeUtil.generate(encoded, canvas.image);
+        }
         canvas.repaint();
     }
 

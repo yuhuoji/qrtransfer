@@ -71,6 +71,44 @@ java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar receive \
 
 目标已存在时增加 `--overwrite`。需要严格限制为 UTF-8 文本时，两端都可增加 `--text`；不传 `--text` 即按任意二进制文件处理。
 
+## 1 MiB 检查点断点续传
+
+需要在云桌面断开、程序退出或发送端卡死后继续传输时，第一次传输和中断后的每一次恢复都要在两端增加 `--resume`。接收端每完成 1 MiB 就持久化一个经过校验的检查点；中断后最多回退并重传不足 1 MiB 的尾部，已验证检查点不会重新发送。
+
+Windows/PowerShell 发送端（首次和恢复使用同一命令）：
+
+```powershell
+cd qrtransfer-cli\target
+java -jar .\qrtransfer-cli-1.0-SNAPSHOT.jar send `
+  --input "<输入文件路径>" `
+  --profile fast `
+  --resume
+```
+
+Mac/Linux 接收端（首次和恢复使用同一命令）：
+
+```bash
+cd qrtransfer-cli/target
+java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar receive \
+  --output "<输出文件路径>" \
+  --profile fast \
+  --resume
+```
+
+接收端将断点保存在 `<输出文件>.part` 和 `<输出文件>.part.meta`。再次执行相同命令时，会验证源文件总大小、完整 MD5 及每个已提交检查点，再截断未满 1 MiB 的尾部并与新启动的发送端协商恢复偏移。因此发送端内部锁卡死时，可以关闭发送端、重新运行相同命令，再重新运行接收端命令继续。
+
+默认应保持输入文件和输出路径不变。程序按输入内容的文件大小和 MD5、输出路径对应的检查点内容及文本模式判断是否可续传；即使文件名相同，只要内容变化也会拒绝续传并保留现场。确认要放弃旧断点并从零开始时，仅在接收端增加 `--restart`：
+
+```bash
+java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar receive \
+  --output "<输出文件路径>" \
+  --profile fast \
+  --resume \
+  --restart
+```
+
+`--restart` 只删除该输出路径对应的 `.part` 与 `.part.meta`，必须和 `--resume` 一起使用。断点续传仅支持 Adaptive V2，两端都必须使用本次更新后的统一 CLI；不能与 `--legacy` 同用。
+
 ## 速度预设与自适应
 
 | profile | 二维码 | 初始页面 | 页面范围 | 主动等待 | 超时降密 |
@@ -92,6 +130,7 @@ java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar receive \
 - `--min-page-size`、`--initial-page-size`、`--max-page-size`：页面自适应范围。
 - `--fixed-page-size <字节>`：固定页面大小，关闭载荷自动升降。
 - `--legacy`：生成与原版接收端兼容的二维码页。
+- `--resume`：启用 Adaptive V2 检查点恢复；第一次发送也必须指定。
 
 接收端参数：
 
@@ -104,6 +143,8 @@ java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar receive \
 - `--frame-timeout <毫秒>`：新页面等待超时。
 - `--downshift-after-timeouts <次数>`：同一页连续完整超时多少次后才请求降密；Safe 默认 `1`，Balanced/Fast 默认 `3`。
 - `--legacy`：接收原版发送端协议；可用 `--page-delay` 设置原版固定等待。
+- `--resume`：使用固定 `.part/.part.meta` 保存和恢复 1 MiB 检查点。
+- `--restart`：放弃该输出路径的旧断点并从零开始，必须与 `--resume` 同用。
 
 显式参数优先于 profile 预设。Balanced/Fast 的 `0ms` 表示程序不额外休眠，实际确认周期仍由截图、解码、按键和远程桌面刷新决定；因此不提供脱离实际环境的理论峰值。Fast 已默认使用 768px；屏幕空间不足时可显式降低 `--qr-size`，但本机容量校准可能随之降低有效页面大小。
 
@@ -159,7 +200,7 @@ Fast 紧凑编码要求发送端和接收端都使用本次更新后的统一 CL
 
 ## 完整性
 
-V2 每页使用 CRC32C 校验页号、偏移和载荷，完成后校验文件大小与 MD5。接收内容先写入临时 `.part` 文件，全部校验通过后才原子移动为最终文件；失败、中断或校验不一致时不会发布最终输出。本功能不提供加密或身份认证。
+V2 每页使用 CRC32C 校验页号、偏移和载荷，完成后校验文件大小与 MD5。接收内容先写入临时 `.part` 文件，全部校验通过后才原子移动为最终文件；失败、中断或校验不一致时不会发布最终输出。启用 `--resume` 时保留已提交检查点，不启用时继续清理失败的随机临时文件。本功能不提供加密或身份认证。
 
 # 旧版剪贴板文本桥接
 

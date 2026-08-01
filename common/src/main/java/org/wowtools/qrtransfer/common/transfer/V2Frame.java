@@ -12,6 +12,8 @@ public final class V2Frame {
     public static final byte TYPE_HEADER = 1;
     public static final byte TYPE_DATA = 2;
     public static final byte TYPE_BENCHMARK_HEADER = 3;
+    public static final byte TYPE_RESUME_READY = 4;
+    public static final byte TYPE_RESUME_CONFIRM = 5;
     public static final short FLAG_END = 1;
     public static final short FLAG_TEXT = 2;
     private static final int MD5_BYTES = 16;
@@ -19,6 +21,8 @@ public final class V2Frame {
     private static final int HEADER_BYTES_WITHOUT_CRC = COMMON_BYTES + 8 + MD5_BYTES;
     private static final int DATA_BYTES_WITHOUT_PAYLOAD_OR_CRC = COMMON_BYTES + 4 + 8 + 4;
     private static final int BENCHMARK_BYTES_WITHOUT_CRC = COMMON_BYTES + 4 + 4 + 4 + 4;
+    private static final int RESUME_READY_BYTES_WITHOUT_CRC = COMMON_BYTES;
+    private static final int RESUME_CONFIRM_BYTES_WITHOUT_CRC = COMMON_BYTES + 8 + MD5_BYTES;
 
     private final byte type;
     private final short flags;
@@ -70,6 +74,19 @@ public final class V2Frame {
                 -1, 0, null, qrSize, minPageSize, initialPageSize, maxPageSize);
     }
 
+    public static V2Frame resumeReady(long sessionId) {
+        return new V2Frame(TYPE_RESUME_READY, (short) 0, sessionId, -1, null,
+                -1, 0, null, 0, 0, 0, 0);
+    }
+
+    public static V2Frame resumeConfirm(long sessionId, long offset, String prefixMd5Hex) {
+        if (offset < 0) {
+            throw new IllegalArgumentException("恢复偏移无效");
+        }
+        return new V2Frame(TYPE_RESUME_CONFIRM, (short) 0, sessionId, -1,
+                hexToBytes(prefixMd5Hex), -1, offset, null, 0, 0, 0, 0);
+    }
+
     public byte[] encode() {
         int bodySize;
         if (type == TYPE_HEADER) {
@@ -78,6 +95,10 @@ public final class V2Frame {
             bodySize = BENCHMARK_BYTES_WITHOUT_CRC;
         } else if (type == TYPE_DATA) {
             bodySize = DATA_BYTES_WITHOUT_PAYLOAD_OR_CRC + payload.length;
+        } else if (type == TYPE_RESUME_READY) {
+            bodySize = RESUME_READY_BYTES_WITHOUT_CRC;
+        } else if (type == TYPE_RESUME_CONFIRM) {
+            bodySize = RESUME_CONFIRM_BYTES_WITHOUT_CRC;
         } else {
             throw new IllegalStateException("未知帧类型: " + type);
         }
@@ -89,6 +110,10 @@ public final class V2Frame {
             buffer.putInt(qrSize).putInt(minPageSize).putInt(initialPageSize).putInt(maxPageSize);
         } else if (type == TYPE_DATA) {
             buffer.putInt(pageNumber).putLong(offset).putInt(payload.length).put(payload);
+        } else if (type == TYPE_RESUME_READY) {
+            // Common header is the complete payload for this control frame.
+        } else if (type == TYPE_RESUME_CONFIRM) {
+            buffer.putLong(offset).put(md5);
         } else {
             throw new IllegalStateException("未知帧类型: " + type);
         }
@@ -150,6 +175,22 @@ public final class V2Frame {
             return new V2Frame(type, flags, sessionId, -1, null, pageNumber, offset, payload,
                     0, 0, 0, 0);
         }
+        if (type == TYPE_RESUME_READY) {
+            if (encoded.length != RESUME_READY_BYTES_WITHOUT_CRC + Integer.BYTES) {
+                throw new IllegalArgumentException("恢复就绪帧长度错误");
+            }
+            return resumeReady(sessionId);
+        }
+        if (type == TYPE_RESUME_CONFIRM) {
+            if (encoded.length != RESUME_CONFIRM_BYTES_WITHOUT_CRC + Integer.BYTES) {
+                throw new IllegalArgumentException("恢复确认帧长度错误");
+            }
+            long offset = buffer.getLong();
+            byte[] prefixMd5 = new byte[MD5_BYTES];
+            buffer.get(prefixMd5);
+            return new V2Frame(type, flags, sessionId, -1, prefixMd5, -1, offset, null,
+                    0, 0, 0, 0);
+        }
         throw new IllegalArgumentException("未知 V2 帧类型: " + type);
     }
 
@@ -167,6 +208,14 @@ public final class V2Frame {
 
     public boolean isBenchmarkHeader() {
         return type == TYPE_BENCHMARK_HEADER;
+    }
+
+    public boolean isResumeReady() {
+        return type == TYPE_RESUME_READY;
+    }
+
+    public boolean isResumeConfirm() {
+        return type == TYPE_RESUME_CONFIRM;
     }
 
     public boolean isEnd() {
