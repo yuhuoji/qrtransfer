@@ -6,6 +6,7 @@ import org.wowtools.qrtransfer.common.ui.LogTextArea;
 import org.wowtools.qrtransfer.common.util.QRCodeUtil;
 import org.wowtools.qrtransfer.sender.logic.Config;
 import org.wowtools.qrtransfer.sender.logic.FileReader;
+import org.wowtools.qrtransfer.sender.LegacySenderVersion;
 
 import javax.swing.*;
 import java.awt.*;
@@ -28,7 +29,7 @@ public class SenderMainUi extends JFrame {
     public static final LogTextArea logTextArea;
 
     static {
-        SenderMainUi ui = new SenderMainUi("sender");
+        SenderMainUi ui = new SenderMainUi(LegacySenderVersion.DISPLAY_NAME);
         Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
         ui.setSize(screenSize.width, screenSize.height);    //设置Frame的大小
 //        ui.setBackground(Color.yellow);      //设置Frame的背景色
@@ -76,6 +77,7 @@ public class SenderMainUi extends JFrame {
 
 
     public static void start() throws Exception {
+        logTextArea.log(LegacySenderVersion.DISPLAY_NAME);
         FileHead head = FileReader.readHead(Config.tar);
         QRCodeUtil.generateQRCodeImage(head.toByte(), qrCodeCanvas.img);
         SenderMainUi.qrCodeCanvas.paint(SenderMainUi.qrCodeCanvas.getGraphics());

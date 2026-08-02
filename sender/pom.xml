@@ -11,6 +11,10 @@
 
     <artifactId>sender</artifactId>
 
+    <properties>
+        <legacy.sender.version>1.0.1</legacy.sender.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.wowtools.qrtransfer</groupId>
@@ -20,6 +24,7 @@
     </dependencies>
 
     <build>
+        <finalName>sender-legacy-lockfix-v${legacy.sender.version}</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -31,6 +36,7 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>

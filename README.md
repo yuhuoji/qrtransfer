@@ -177,6 +177,19 @@ java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar benchmark-receive \
 
 ## 原版兼容
 
+### 原版发送端忙锁修复版
+
+原版协议发送端的兼容修复版本号为 `legacy lock-fix v1.0.1`，构建产物为：
+
+```text
+sender/target/sender-legacy-lockfix-v1.0.1.jar
+```
+
+窗口标题也会显示 `sender (legacy lock-fix v1.0.1)`，用于和未经修复的
+`sender-1.0-SNAPSHOT.jar` 以及 Adaptive V2 CLI 区分。此版本保持原版协议和
+`config.properties` 用法不变，只修复完整二维码页面预检及翻页异常后 busy 锁不释放的问题。
+它仍不支持断点续传；断点续传必须使用统一 CLI 的 Adaptive V2 `--resume`。
+
 新发送端配原版接收端：
 
 ```powershell

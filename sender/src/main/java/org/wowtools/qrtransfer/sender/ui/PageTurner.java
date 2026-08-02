@@ -46,18 +46,27 @@ public class PageTurner extends KeyAdapter {
             return;
         }
 
-        char inputKey = e.getKeyChar();
-
-        switch (inputKey) {
-            case Constant.Key_NextPage:
-                nextPage();
-                break;
-            case Constant.Key_BeforePage:
-                beforePage();
-                break;
+        try {
+            char inputKey = e.getKeyChar();
+            switch (inputKey) {
+                case Constant.Key_NextPage:
+                    nextPage();
+                    break;
+                case Constant.Key_BeforePage:
+                    beforePage();
+                    break;
+                default:
+                    break;
+            }
+        } catch (RuntimeException exception) {
+            SenderMainUi.logTextArea.log("翻页失败，busy 锁已释放: "
+                    + exception.getClass().getSimpleName() + ": " + exception.getMessage());
+            exception.printStackTrace();
+        } finally {
+            // The original implementation released this only on the success path. Any QR
+            // generation/runtime exception left the sender permanently printing "busying...".
+            busying.set(false);
         }
-
-        busying.set(false);
     }
 
     /**

@@ -9,7 +9,7 @@ import org.wowtools.qrtransfer.sender.ui.SenderMainUi;
  */
 public class StartSender {
     public static void main(String[] args) {
-        new DisclaimerUi("sender",(e)->{
+        new DisclaimerUi(LegacySenderVersion.DISPLAY_NAME,(e)->{
             try {
                 SenderMainUi.start();
             } catch (Exception exception) {
