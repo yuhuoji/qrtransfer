@@ -9,7 +9,7 @@ import org.wowtools.qrtransfer.receiver.ui.ReceiverMainUi;
  */
 public class StartReceiver {
     public static void main(String[] args) throws Exception{
-        new DisclaimerUi("receiver", (e) -> {
+        new DisclaimerUi(LegacyReceiverVersion.DISPLAY_NAME, (e) -> {
             try {
                 ReceiverMainUi.start();
             } catch (Exception exception) {

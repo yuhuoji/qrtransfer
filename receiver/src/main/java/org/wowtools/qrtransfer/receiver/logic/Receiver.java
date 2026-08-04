@@ -153,14 +153,23 @@ public class Receiver {
                         }
                     }
                 }
-                page = PageParser.parse(bytes);
+                try {
+                    page = PageParser.parse(bytes);
+                } catch (RuntimeException normalDecodeFailure) {
+                    byte[] filteredBytes = CaptureScreen.encodeHighContrast();
+                    if (filteredBytes == null) {
+                        throw normalDecodeFailure;
+                    }
+                    page = PageParser.parse(filteredBytes);
+                    log("普通解析失败，已通过去水印重试恢复当前页");
+                }
             } catch (Exception e) {
-                e.printStackTrace();
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException interruptedException) {
-                    interruptedException.printStackTrace();
+                    Thread.currentThread().interrupt();
                 }
+                log("当前页解析失败，保留当前二维码并重试: " + rootMessage(e));
                 keyEvent = KeyEvent_Empty;
                 continue;
             }
@@ -194,5 +203,14 @@ public class Receiver {
 
     private static void log(String str) {
         ReceiverMainUi.logTextArea.log(str);
+    }
+
+    private static String rootMessage(Throwable throwable) {
+        Throwable root = throwable;
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+        String message = root.getMessage();
+        return root.getClass().getSimpleName() + (message == null ? "" : ": " + message);
     }
 }

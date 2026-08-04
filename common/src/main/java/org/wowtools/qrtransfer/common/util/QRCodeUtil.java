@@ -52,4 +52,13 @@ public class QRCodeUtil {
         }
     }
 
+    /**
+     * Decodes a screen capture after removing light gray remote-desktop watermarks.
+     * This is intentionally an explicit fallback because preprocessing every frame
+     * would reduce the legacy receiver's normal-path throughput.
+     */
+    public static byte[] parseQRCodeImageHighContrast(BufferedImage img) {
+        return parseQRCodeImage(BinaryQRCodeUtil.highContrast(img));
+    }
+
 }

@@ -185,9 +185,17 @@ java -jar ./qrtransfer-cli-1.0-SNAPSHOT.jar benchmark-receive \
 sender/target/sender-legacy-lockfix-v1.0.1.jar
 ```
 
+配套的原版协议接收端去水印重试版本为：
+
+```text
+receiver/target/receiver-legacy-watermarkfix-v1.0.1.jar
+```
+
 窗口标题也会显示 `sender (legacy lock-fix v1.0.1)`，用于和未经修复的
 `sender-1.0-SNAPSHOT.jar` 以及 Adaptive V2 CLI 区分。此版本保持原版协议和
 `config.properties` 用法不变，只修复完整二维码页面预检及翻页异常后 busy 锁不释放的问题。
+修复版接收端在 Protobuf 页面解析失败时会保留当前页，使用高对比度去水印截图重试，
+并避免重复输出完整异常栈；它可与原版或 `legacy lock-fix v1.0.1` 发送端配合。
 它仍不支持断点续传；断点续传必须使用统一 CLI 的 Adaptive V2 `--resume`。
 
 新发送端配原版接收端：

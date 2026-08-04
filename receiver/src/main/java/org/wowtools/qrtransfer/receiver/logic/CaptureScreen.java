@@ -37,5 +37,10 @@ public class CaptureScreen {
         return res;
     }
 
+    public static byte[] encodeHighContrast() {
+        BufferedImage img = getCaptureScreenImage();
+        return QRCodeUtil.parseQRCodeImageHighContrast(img);
+    }
+
 
 }

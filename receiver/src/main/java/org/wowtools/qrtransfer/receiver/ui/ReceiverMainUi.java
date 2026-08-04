@@ -1,6 +1,7 @@
 package org.wowtools.qrtransfer.receiver.ui;
 
 import org.wowtools.qrtransfer.common.ui.LogTextArea;
+import org.wowtools.qrtransfer.receiver.LegacyReceiverVersion;
 
 import javax.swing.*;
 import java.awt.*;
@@ -13,6 +14,10 @@ import java.awt.BorderLayout;
  * @date 2020/9/28
  */
 public class ReceiverMainUi extends JFrame {
+
+    private ReceiverMainUi() {
+        super(LegacyReceiverVersion.DISPLAY_NAME);
+    }
 
     public static final LogTextArea logTextArea;
 
