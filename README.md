@@ -231,9 +231,9 @@ V2 每页使用 CRC32C 校验页号、偏移和载荷，完成后校验文件大
 
 # 上游来源与开源许可
 
-本项目基于 wowtools 的 [qrtransfer](https://gitee.com/wowtools/qrtransfer) 开发；原始发布包可见 [codingmiao/qrtransfer v1.0](https://github.com/codingmiao/qrtransfer/releases/tag/v1.0)。
+本仓库基于上游项目 [wowtools/qrtransfer](https://gitee.com/wowtools/qrtransfer) 开发；原始 v1.0 发布包见 [codingmiao/qrtransfer](https://github.com/codingmiao/qrtransfer/releases/tag/v1.0)。
 
-原项目采用 [Apache License 2.0](LICENSE) 开源。本仓库保留原有许可证与声明；后续修改将在提交记录中明确说明。
+上游项目采用 [Apache License 2.0](LICENSE)；上游许可证文本未指定具体版权人，本仓库不额外推断原始版权归属。本仓库保留原有 `LICENSE` 与相关归属说明，并以 Apache-2.0 继续发布。新增功能、修改和修复由本仓库维护者完成，具体以本仓库提交记录为准。本仓库是独立维护的衍生版本，不代表上游项目官方版本或官方支持。
 
 
 # 声明
